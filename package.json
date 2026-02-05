@@ -9,13 +9,17 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/db": "^0.19.0",
     "@astrojs/react": "^4.4.2",
+    "@libsql/client": "^0.17.0",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
     "astro": "^5.17.1",
     "better-auth": "^1.4.18",
+    "drizzle-orm": "^0.45.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.8"
   }
 }
