@@ -1,0 +1,13 @@
+---
+import LogOutButton from '../components/LogOutButton.tsx';
+
+const { user, session } = Astro.locals;
+const initialSession = user && session ? { user, session } : null;
+---
+
+<div>
+  <nav>
+    <a href="/">Home</a>
+    <LogOutButton client:load initialSession={initialSession} />
+  </nav>
+</div>

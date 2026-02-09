@@ -1,15 +1,30 @@
 // src/components/AuthButtons.tsx
-import { authClient, useSession } from '../lib/auth-client';
-import { useState } from 'react';
+interface Props {
+  initialSession?: any;
+}
 
-export default function AuthButtons() {
+import { authClient, useSession } from '../lib/auth-client';
+import { useState, useEffect } from 'react';
+
+export default function AuthButtons({ initialSession }: Props) {
   const { data: session } = useSession();
+  const currentSession = session ?? initialSession;
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [redirectUrl, setRedirectUrl] = useState('/dashboard');
+
+  // Get redirect URL from query params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get('redirect');
+    if (redirect) {
+      setRedirectUrl(redirect);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,15 +37,17 @@ export default function AuthButtons() {
           email,
           password,
           name,
-          callbackURL: '/dashboard',
+          callbackURL: redirectUrl,
         });
       } else {
         await authClient.signIn.email({
           email,
           password,
-          callbackURL: '/dashboard',
+          callbackURL: redirectUrl,
         });
       }
+
+      window.location.href = redirectUrl;
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
     } finally {
@@ -39,13 +56,24 @@ export default function AuthButtons() {
   };
 
   const handleLogout = async () => {
-    await authClient.signOut();
+    try {
+      await authClient.signOut({
+        fetchOptions: {
+          onSuccess: () => {
+            window.location.href = '/login';
+          },
+        },
+      });
+    } catch (error) {
+      // Still redirect even if there's an error
+      window.location.href = '/login';
+    }
   };
 
-  if (session) {
+  if (currentSession) {
     return (
       <div>
-        <p>Welcome, {session.user.name || session.user.email}!</p>
+        <p>Welcome, {currentSession.user.name || currentSession.user.email}!</p>
         <button onClick={handleLogout}>Logout</button>
       </div>
     );

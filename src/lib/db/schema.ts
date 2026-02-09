@@ -1,5 +1,6 @@
 // src/lib/db/schema.ts
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 export const user = sqliteTable('user', {
   id: text('id').primaryKey(),
@@ -51,4 +52,84 @@ export const verification = sqliteTable('verification', {
   expiresAt: integer('expiresAt', { mode: 'timestamp' }).notNull(),
   createdAt: integer('createdAt', { mode: 'timestamp' }),
   updatedAt: integer('updatedAt', { mode: 'timestamp' }),
+});
+
+// Quiz tables
+export const quizzes = sqliteTable('quizzes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  description: text('description'),
+  createdBy: text('created_by')
+    .notNull()
+    .references(() => user.id),
+  status: text('status', { enum: ['open', 'closed', 'guessing', 'completed'] })
+    .notNull()
+    .default('open'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(
+    sql`CURRENT_TIMESTAMP`,
+  ),
+  closedAt: integer('closed_at', { mode: 'timestamp' }),
+});
+
+export const songSubmissions = sqliteTable('song_submissions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  quizId: integer('quiz_id')
+    .notNull()
+    .references(() => quizzes.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  songLink: text('song_link').notNull(),
+  songTitle: text('song_title'),
+  artist: text('artist'),
+  submittedAt: integer('submitted_at', { mode: 'timestamp' }).default(
+    sql`CURRENT_TIMESTAMP`,
+  ),
+});
+
+export const guesses = sqliteTable('guesses', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  quizId: integer('quiz_id')
+    .notNull()
+    .references(() => quizzes.id, { onDelete: 'cascade' }),
+  guesserId: text('guesser_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  songSubmissionId: integer('song_submission_id')
+    .notNull()
+    .references(() => songSubmissions.id, { onDelete: 'cascade' }),
+  guessedUserId: text('guessed_user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  isCorrect: integer('is_correct', { mode: 'boolean' }),
+  guessedAt: integer('guessed_at', { mode: 'timestamp' }).default(
+    sql`CURRENT_TIMESTAMP`,
+  ),
+});
+
+export const quizParticipants = sqliteTable('quiz_participants', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  quizId: integer('quiz_id')
+    .notNull()
+    .references(() => quizzes.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  joinedAt: integer('joined_at', { mode: 'timestamp' }).default(
+    sql`CURRENT_TIMESTAMP`,
+  ),
+});
+
+export const quizAdmins = sqliteTable('quiz_admins', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  quizId: integer('quiz_id')
+    .notNull()
+    .references(() => quizzes.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  addedAt: integer('added_at', { mode: 'timestamp' }).default(
+    sql`CURRENT_TIMESTAMP`,
+  ),
+  addedBy: text('added_by').references(() => user.id),
 });
