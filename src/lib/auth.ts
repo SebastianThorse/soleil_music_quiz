@@ -10,8 +10,8 @@ let authInstance: ReturnType<typeof betterAuth> | null = null;
 function getAuth() {
   if (authInstance) return authInstance;
 
-  const tursoUrl = import.meta.env.TURSO_DATABASE_URL;
-  const tursoToken = import.meta.env.TURSO_AUTH_TOKEN;
+  const tursoUrl = process.env.TURSO_DATABASE_URL;
+  const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
   const client = createClient({
     url: tursoUrl || 'file:.astro/content.db',
