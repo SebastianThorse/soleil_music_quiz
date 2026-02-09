@@ -1,0 +1,826 @@
+---
+// src/pages/quiz/[id].astro
+import Layout from '../../layouts/Layout.astro';
+import { db } from '../../lib/db';
+import {
+  quizzes,
+  songSubmissions,
+  quizParticipants,
+  quizAdmins,
+  user as userTable,
+} from '../../lib/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+
+const { user } = Astro.locals;
+const { id } = Astro.params;
+
+// Redirect if not logged in
+if (!user) {
+  return Astro.redirect(`/login?redirect=/quiz/${id}`);
+}
+
+// Get quiz details
+const [quiz] = await db
+  .select()
+  .from(quizzes)
+  .where(eq(quizzes.id, parseInt(id!)))
+  .limit(1);
+
+if (!quiz) {
+  return Astro.redirect('/');
+}
+
+// Check if user is admin
+const [isAdmin] = await db
+  .select()
+  .from(quizAdmins)
+  .where(and(eq(quizAdmins.quizId, quiz.id), eq(quizAdmins.userId, user.id)))
+  .limit(1);
+
+// Check if user has already submitted
+const [userSubmission] = await db
+  .select()
+  .from(songSubmissions)
+  .where(
+    and(
+      eq(songSubmissions.quizId, quiz.id),
+      eq(songSubmissions.userId, user.id),
+    ),
+  )
+  .limit(1);
+
+// Check if user is a participant
+const [isParticipant] = await db
+  .select()
+  .from(quizParticipants)
+  .where(
+    and(
+      eq(quizParticipants.quizId, quiz.id),
+      eq(quizParticipants.userId, user.id),
+    ),
+  )
+  .limit(1);
+
+// Get all submissions with user info
+const submissions = await db
+  .select({
+    id: songSubmissions.id,
+    songLink: songSubmissions.songLink,
+    songTitle: songSubmissions.songTitle,
+    artist: songSubmissions.artist,
+    submittedAt: songSubmissions.submittedAt,
+    userName: userTable.name,
+    userEmail: userTable.email,
+  })
+  .from(songSubmissions)
+  .innerJoin(userTable, eq(songSubmissions.userId, userTable.id))
+  .where(eq(songSubmissions.quizId, quiz.id));
+
+// Get participant count
+const [participantCount] = await db
+  .select({ count: sql<number>`count(*)` })
+  .from(quizParticipants)
+  .where(eq(quizParticipants.quizId, quiz.id));
+
+let error = '';
+let success = '';
+
+// Handle POST requests (join quiz or submit song)
+if (Astro.request.method === 'POST') {
+  try {
+    const formData = await Astro.request.formData();
+    const action = formData.get('action')?.toString();
+
+    if (action === 'join') {
+      // Join the quiz
+      if (!isParticipant) {
+        await db.insert(quizParticipants).values({
+          quizId: quiz.id,
+          userId: user.id,
+        });
+        success = 'Du har gått med i quizet!';
+        return Astro.redirect(`/quiz/${id}`);
+      }
+    } else if (action === 'submit_song') {
+      const songLink = formData.get('song_link')?.toString();
+      const songTitle = formData.get('song_title')?.toString();
+      const artist = formData.get('artist')?.toString();
+
+      if (!songLink || songLink.trim() === '') {
+        error = 'Låtlänk krävs';
+      } else if (!isParticipant) {
+        error = 'Du måste gå med i quizet först';
+      } else if (userSubmission) {
+        error = 'Du har redan skickat in en låt';
+      } else if (quiz.status !== 'open') {
+        error = 'Quizet accepterar inte längre låtinlämningar';
+      } else {
+        // Extract Spotify ID from link if it's a Spotify URL
+        let cleanLink = songLink.trim();
+
+        await db.insert(songSubmissions).values({
+          quizId: quiz.id,
+          userId: user.id,
+          songLink: cleanLink,
+          songTitle: songTitle?.trim() || null,
+          artist: artist?.trim() || null,
+        });
+
+        success = 'Din låt har skickats in!';
+        return Astro.redirect(`/quiz/${id}`);
+      }
+    } else if (action === 'change_status') {
+      const newStatus = formData.get('new_status')?.toString();
+
+      if (!isAdmin) {
+        error = 'Endast administratörer kan ändra quizstatus';
+      } else if (
+        newStatus &&
+        ['open', 'guessing', 'completed'].includes(newStatus)
+      ) {
+        await db
+          .update(quizzes)
+          .set({
+            status: newStatus as 'open' | 'guessing' | 'completed',
+            closedAt: newStatus !== 'open' ? new Date() : null,
+          })
+          .where(eq(quizzes.id, quiz.id));
+
+        return Astro.redirect(`/quiz/${id}`);
+      }
+    }
+  } catch (e: any) {
+    console.error('Error:', e);
+    error = 'Ett fel uppstod. Försök igen.';
+  }
+}
+
+const getStatusText = (status: string) => {
+  switch (status) {
+    case 'open':
+      return 'Öppen för låtinlämning';
+    case 'guessing':
+      return 'Gissningsfas';
+    case 'completed':
+      return 'Avslutad';
+    default:
+      return status;
+  }
+};
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'open':
+      return '#10b981';
+    case 'guessing':
+      return '#f59e0b';
+    case 'completed':
+      return '#6b7280';
+    default:
+      return '#6b7280';
+  }
+};
+---
+
+<Layout>
+  <div class="container">
+    <div class="header">
+      <a href="/" class="back-link">← Tillbaka till startsidan</a>
+      <div class="title-row">
+        <h1>{quiz.name}</h1>
+        <span
+          class="status-badge"
+          style={`background-color: ${getStatusColor(quiz.status)}`}
+        >
+          {getStatusText(quiz.status)}
+        </span>
+      </div>
+      {quiz.description && <p class="description">{quiz.description}</p>}
+
+      <div class="quiz-stats">
+        <div class="stat-item">
+          <span class="stat-value">{participantCount.count}</span>
+          <span class="stat-label">Deltagare</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{submissions.length}</span>
+          <span class="stat-label">Låtar inlämnade</span>
+        </div>
+      </div>
+    </div>
+
+    {error && <div class="error-message">{error}</div>}
+
+    {success && <div class="success-message">{success}</div>}
+
+    {/* OPEN STAGE - Join and Submit Songs */}
+    {
+      quiz.status === 'open' && (
+        <div class="stage-container">
+          <h2>Skicka in din låt</h2>
+
+          {!isParticipant ? (
+            <div class="join-card">
+              <p>Gå med i quizet för att skicka in din låt!</p>
+              <form method="POST">
+                <input type="hidden" name="action" value="join" />
+                <button type="submit" class="btn-primary">
+                  Gå med i quizet
+                </button>
+              </form>
+            </div>
+          ) : userSubmission ? (
+            <div class="submission-card submitted">
+              <h3>✓ Din inlämning</h3>
+              <div class="submission-details">
+                {userSubmission.songTitle && (
+                  <p class="song-title">{userSubmission.songTitle}</p>
+                )}
+                {userSubmission.artist && (
+                  <p class="artist">{userSubmission.artist}</p>
+                )}
+                <a
+                  href={userSubmission.songLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="song-link"
+                >
+                  Öppna låt →
+                </a>
+              </div>
+            </div>
+          ) : (
+            <form method="POST" class="submission-form">
+              <input type="hidden" name="action" value="submit_song" />
+
+              <div class="form-group">
+                <label for="song_link" class="form-label">
+                  Spotify-länk <span class="required">*</span>
+                </label>
+                <input
+                  type="url"
+                  id="song_link"
+                  name="song_link"
+                  class="form-input"
+                  placeholder="https://open.spotify.com/track/..."
+                  required
+                />
+                <p class="form-help">
+                  Klistra in länken till låten från Spotify
+                </p>
+              </div>
+
+              <div class="form-group">
+                <label for="song_title" class="form-label">
+                  Låttitel (valfritt)
+                </label>
+                <input
+                  type="text"
+                  id="song_title"
+                  name="song_title"
+                  class="form-input"
+                  placeholder="t.ex. Bohemian Rhapsody"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="artist" class="form-label">
+                  Artist (valfritt)
+                </label>
+                <input
+                  type="text"
+                  id="artist"
+                  name="artist"
+                  class="form-input"
+                  placeholder="t.ex. Queen"
+                />
+              </div>
+
+              <button type="submit" class="btn-primary">
+                Skicka in låt
+              </button>
+            </form>
+          )}
+
+          {/* Admin controls */}
+          {isAdmin && submissions.length > 0 && (
+            <div class="admin-section">
+              <h3>Administratör</h3>
+              <p>
+                Det finns {submissions.length} inlämnade{' '}
+                {submissions.length === 1 ? 'låt' : 'låtar'}.
+              </p>
+              <form method="POST">
+                <input type="hidden" name="action" value="change_status" />
+                <input type="hidden" name="new_status" value="guessing" />
+                <button type="submit" class="btn-warning">
+                  Stäng inlämning och starta gissning
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Show submissions to admin */}
+          {isAdmin && submissions.length > 0 && (
+            <div class="submissions-list">
+              <h3>Inlämnade låtar ({submissions.length})</h3>
+              <div class="submission-grid">
+                {submissions.map((sub) => (
+                  <div class="submission-item">
+                    <p class="submitter">{sub.userName}</p>
+                    {/* {sub.songTitle && (
+                      <p class="song-info">
+                        <strong>{sub.songTitle}</strong>
+                      </p>
+                    )}
+                    {sub.artist && <p class="song-info">{sub.artist}</p>}
+                    <a
+                      href={sub.songLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="link"
+                    >
+                      Öppna →
+                    </a> */}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    {/* GUESSING STAGE - Show info and link to guessing page */}
+    {
+      quiz.status === 'guessing' && (
+        <div class="stage-container">
+          <h2>Dags att gissa!</h2>
+          <div class="guessing-info-card">
+            <p class="info-text">
+              Alla har skickat in sina låtar. Nu är det dags att gissa vem som
+              valde vilken låt!
+            </p>
+
+            <div class="guessing-stats">
+              <div class="stat-box">
+                <span class="big-number">{submissions.length}</span>
+                <span class="stat-text">låtar att gissa på</span>
+              </div>
+              <div class="stat-box">
+                <span class="big-number">{participantCount.count}</span>
+                <span class="stat-text">deltagare</span>
+              </div>
+            </div>
+
+            <a href={`/quiz/${id}/guess`} class="btn-primary btn-large">
+              Börja gissa →
+            </a>
+          </div>
+
+          {/* Admin controls */}
+          {isAdmin && (
+            <div class="admin-section">
+              <h3>Administratör</h3>
+              <form method="POST" style="display: flex; gap: 1rem;">
+                <input type="hidden" name="action" value="change_status" />
+                <button
+                  type="submit"
+                  name="new_status"
+                  value="open"
+                  class="btn-secondary"
+                >
+                  ← Återgå till inlämning
+                </button>
+                <button
+                  type="submit"
+                  name="new_status"
+                  value="completed"
+                  class="btn-warning"
+                >
+                  Avsluta quiz
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    {/* COMPLETED STAGE - Show link to results */}
+    {
+      quiz.status === 'completed' && (
+        <div class="stage-container">
+          <h2>Quizet är avslutat</h2>
+          <div class="completed-card">
+            <p>
+              Detta quiz är nu avslutat. Se resultaten för att se vem som
+              gissade rätt!
+            </p>
+            <a href={`/quiz/${id}/results`} class="btn-primary">
+              Se resultat →
+            </a>
+          </div>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<style>
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .header {
+    margin-bottom: 2rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    color: #6b7280;
+    text-decoration: none;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    transition: color 0.2s;
+  }
+
+  .back-link:hover {
+    color: #1f2937;
+  }
+
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  .status-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: white;
+    white-space: nowrap;
+  }
+
+  .description {
+    color: #6b7280;
+    font-size: 1.125rem;
+    margin: 0.5rem 0 1.5rem 0;
+  }
+
+  .quiz-stats {
+    display: flex;
+    gap: 2rem;
+    padding: 1.5rem;
+    background: #f9fafb;
+    border-radius: 0.5rem;
+  }
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1f2937;
+  }
+
+  .stat-label {
+    font-size: 0.875rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .error-message,
+  .success-message {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .error-message {
+    background-color: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+  }
+
+  .success-message {
+    background-color: #d1fae5;
+    border: 1px solid #6ee7b7;
+    color: #065f46;
+  }
+
+  .stage-container {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 2rem;
+  }
+
+  .stage-container h2 {
+    font-size: 1.5rem;
+    color: #1f2937;
+    margin: 0 0 1.5rem 0;
+  }
+
+  .join-card {
+    text-align: center;
+    padding: 2rem;
+    background: #f9fafb;
+    border-radius: 0.5rem;
+  }
+
+  .join-card p {
+    margin-bottom: 1.5rem;
+    color: #4b5563;
+  }
+
+  .submission-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .form-label {
+    font-weight: 600;
+    color: #1f2937;
+    font-size: 0.875rem;
+  }
+
+  .required {
+    color: #ef4444;
+  }
+
+  .form-input {
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-family: inherit;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: #0070f3;
+    box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
+  }
+
+  .form-help {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  .submission-card {
+    padding: 1.5rem;
+    background: #f9fafb;
+    border-radius: 0.5rem;
+    border: 2px solid #e5e7eb;
+  }
+
+  .submission-card.submitted {
+    background: #d1fae5;
+    border-color: #6ee7b7;
+  }
+
+  .submission-card h3 {
+    margin: 0 0 1rem 0;
+    color: #065f46;
+  }
+
+  .submission-details .song-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0 0 0.25rem 0;
+  }
+
+  .submission-details .artist {
+    color: #6b7280;
+    margin: 0 0 1rem 0;
+  }
+
+  .song-link {
+    color: #0070f3;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .song-link:hover {
+    text-decoration: underline;
+  }
+
+  .admin-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e5e7eb;
+  }
+
+  .admin-section h3 {
+    font-size: 1.125rem;
+    color: #1f2937;
+    margin: 0 0 1rem 0;
+  }
+
+  .submissions-list {
+    margin-top: 2rem;
+  }
+
+  .submissions-list h3 {
+    font-size: 1.125rem;
+    margin-bottom: 1rem;
+    color: #1f2937;
+  }
+
+  .submission-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+
+  .submission-item {
+    padding: 1rem;
+    background: #f9fafb;
+    border-radius: 0.5rem;
+    border: 1px solid #e5e7eb;
+  }
+
+  .submitter {
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .song-info {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin: 0.25rem 0;
+  }
+
+  .link {
+    color: #0070f3;
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .link:hover {
+    text-decoration: underline;
+  }
+
+  .guessing-info-card {
+    text-align: center;
+    padding: 2rem;
+  }
+
+  .info-text {
+    font-size: 1.125rem;
+    color: #4b5563;
+    margin-bottom: 2rem;
+  }
+
+  .guessing-stats {
+    display: flex;
+    justify-content: center;
+    gap: 3rem;
+    margin-bottom: 2rem;
+  }
+
+  .stat-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .big-number {
+    font-size: 3rem;
+    font-weight: 700;
+    color: #0070f3;
+  }
+
+  .stat-text {
+    font-size: 0.875rem;
+    color: #6b7280;
+  }
+
+  .completed-card {
+    text-align: center;
+    padding: 2rem;
+    background: #f9fafb;
+    border-radius: 0.5rem;
+  }
+
+  .completed-card p {
+    margin-bottom: 1.5rem;
+    color: #4b5563;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-warning {
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    display: inline-block;
+    text-align: center;
+  }
+
+  .btn-primary {
+    background-color: #0070f3;
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background-color: #0051cc;
+  }
+
+  .btn-secondary {
+    background-color: #f3f4f6;
+    color: #1f2937;
+  }
+
+  .btn-secondary:hover {
+    background-color: #e5e7eb;
+  }
+
+  .btn-warning {
+    background-color: #f59e0b;
+    color: white;
+  }
+
+  .btn-warning:hover {
+    background-color: #d97706;
+  }
+
+  .btn-large {
+    padding: 1rem 2rem;
+    font-size: 1.125rem;
+  }
+
+  @media (max-width: 768px) {
+    .container {
+      padding: 1rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    .title-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .quiz-stats {
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .guessing-stats {
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .submission-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .admin-section form {
+      flex-direction: column !important;
+    }
+
+    .admin-section button {
+      width: 100%;
+    }
+  }
+</style>

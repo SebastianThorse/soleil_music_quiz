@@ -1,0 +1,575 @@
+---
+// src/pages/quiz/[id]/guess.astro
+import Layout from '../../../layouts/Layout.astro';
+import { db } from '../../../lib/db';
+import {
+  quizzes,
+  songSubmissions,
+  guesses,
+  quizParticipants,
+  quizAdmins,
+  user as userTable,
+} from '../../../lib/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+
+const { user } = Astro.locals;
+const { id } = Astro.params;
+
+// Redirect if not logged in
+if (!user) {
+  return Astro.redirect(`/login?redirect=/quiz/${id}/guess`);
+}
+
+// Get quiz details
+const [quiz] = await db
+  .select()
+  .from(quizzes)
+  .where(eq(quizzes.id, parseInt(id!)))
+  .limit(1);
+
+if (!quiz) {
+  return Astro.redirect('/');
+}
+
+// Only allow guessing stage
+if (quiz.status !== 'guessing') {
+  return Astro.redirect(`/quiz/${id}`);
+}
+
+// Check if user is admin
+const [isAdmin] = await db
+  .select()
+  .from(quizAdmins)
+  .where(and(eq(quizAdmins.quizId, quiz.id), eq(quizAdmins.userId, user.id)))
+  .limit(1);
+
+// Check if user is a participant
+const [isParticipant] = await db
+  .select()
+  .from(quizParticipants)
+  .where(
+    and(
+      eq(quizParticipants.quizId, quiz.id),
+      eq(quizParticipants.userId, user.id),
+    ),
+  )
+  .limit(1);
+
+if (!isParticipant) {
+  return Astro.redirect(`/quiz/${id}`);
+}
+
+// Get all submissions (without revealing who submitted)
+const submissions = await db
+  .select({
+    id: songSubmissions.id,
+    songLink: songSubmissions.songLink,
+    songTitle: songSubmissions.songTitle,
+    artist: songSubmissions.artist,
+    userId: songSubmissions.userId, // We'll need this to check correctness but won't show it
+  })
+  .from(songSubmissions)
+  .where(eq(songSubmissions.quizId, quiz.id));
+
+// Get all participants for the dropdown
+const participants = await db
+  .select({
+    id: userTable.id,
+    name: userTable.name,
+  })
+  .from(quizParticipants)
+  .innerJoin(userTable, eq(quizParticipants.userId, userTable.id))
+  .where(eq(quizParticipants.quizId, quiz.id));
+
+// Get user's existing guesses
+const userGuesses = await db
+  .select({
+    songSubmissionId: guesses.songSubmissionId,
+    guessedUserId: guesses.guessedUserId,
+  })
+  .from(guesses)
+  .where(and(eq(guesses.quizId, quiz.id), eq(guesses.guesserId, user.id)));
+
+// Create a map of existing guesses
+const guessMap = new Map(
+  userGuesses.map((g) => [g.songSubmissionId, g.guessedUserId]),
+);
+
+let error = '';
+let success = '';
+
+// Handle POST requests
+if (Astro.request.method === 'POST') {
+  try {
+    const formData = await Astro.request.formData();
+    const action = formData.get('action')?.toString();
+
+    if (action === 'submit_guesses') {
+      // Get all guesses from form
+      const newGuesses: { songSubmissionId: number; guessedUserId: string }[] =
+        [];
+
+      for (const submission of submissions) {
+        const guessedUserId = formData
+          .get(`guess_${submission.id}`)
+          ?.toString();
+        if (guessedUserId) {
+          newGuesses.push({
+            songSubmissionId: submission.id,
+            guessedUserId,
+          });
+        }
+      }
+
+      if (newGuesses.length === 0) {
+        error = 'Du måste gissa på minst en låt';
+      } else {
+        // Delete existing guesses and insert new ones in a transaction
+        await db.transaction(async (tx) => {
+          // Delete existing guesses for this user in this quiz
+          await tx
+            .delete(guesses)
+            .where(
+              and(eq(guesses.quizId, quiz.id), eq(guesses.guesserId, user.id)),
+            );
+
+          // Insert new guesses with correctness check
+          for (const guess of newGuesses) {
+            const submission = submissions.find(
+              (s) => s.id === guess.songSubmissionId,
+            );
+            const isCorrect = submission?.userId === guess.guessedUserId;
+
+            await tx.insert(guesses).values({
+              quizId: quiz.id,
+              guesserId: user.id,
+              songSubmissionId: guess.songSubmissionId,
+              guessedUserId: guess.guessedUserId,
+              isCorrect: isCorrect,
+            });
+          }
+        });
+
+        success = `Dina gissningar har sparats! (${newGuesses.length} av ${submissions.length} låtar)`;
+        return Astro.redirect(`/quiz/${id}/guess`);
+      }
+    } else if (action === 'reset_to_open' && isAdmin) {
+      // Admin action: Delete all guesses and change status back to open
+      await db.transaction(async (tx) => {
+        // Delete all guesses for this quiz
+        await tx.delete(guesses).where(eq(guesses.quizId, quiz.id));
+
+        // Change status back to open
+        await tx
+          .update(quizzes)
+          .set({
+            status: 'open',
+            closedAt: null,
+          })
+          .where(eq(quizzes.id, quiz.id));
+      });
+
+      return Astro.redirect(`/quiz/${id}`);
+    }
+  } catch (e: any) {
+    console.error('Error:', e);
+    error = 'Ett fel uppstod. Försök igen.';
+  }
+}
+
+// Shuffle submissions so they appear in random order (seed with quiz id for consistency)
+const shuffledSubmissions = [...submissions].sort((a, b) => {
+  // Simple deterministic shuffle based on quiz id and submission ids
+  const hashA = (a.id * quiz.id) % 1000;
+  const hashB = (b.id * quiz.id) % 1000;
+  return hashA - hashB;
+});
+
+// Extract Spotify track ID for embedding
+const getSpotifyTrackId = (link: string): string | null => {
+  try {
+    // Handle various Spotify URL formats
+    // https://open.spotify.com/track/TRACK_ID
+    // https://open.spotify.com/track/TRACK_ID?si=...
+    const match = link.match(/track\/([a-zA-Z0-9]+)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+};
+---
+
+<Layout>
+  <div class="container">
+    <div class="header">
+      <a href={`/quiz/${id}`} class="back-link">← Tillbaka till quizet</a>
+      <h1>Gissa vem som skickade vad</h1>
+      <p class="subtitle">{quiz.name}</p>
+    </div>
+
+    {error && <div class="error-message">{error}</div>}
+
+    {success && <div class="success-message">{success}</div>}
+
+    <div class="info-box">
+      <p>
+        Lyssna på låtarna och gissa vem som skickade in varje låt. Du kan ändra
+        dina gissningar när som helst under gissningsfasen.
+      </p>
+    </div>
+
+    <form method="POST" class="guessing-form">
+      <input type="hidden" name="action" value="submit_guesses" />
+
+      <div class="songs-list">
+        {
+          shuffledSubmissions.map((submission, index) => {
+            const spotifyId = getSpotifyTrackId(submission.songLink);
+            const existingGuess = guessMap.get(submission.id);
+
+            return (
+              <div class="song-card">
+                <div class="song-header">
+                  <h3>Låt {index + 1}</h3>
+                  {submission.songTitle && (
+                    <span class="song-title">{submission.songTitle}</span>
+                  )}
+                </div>
+
+                {submission.artist && <p class="artist">{submission.artist}</p>}
+
+                {/* Spotify Embed */}
+                {spotifyId ? (
+                  <div class="spotify-embed">
+                    <iframe
+                      style="border-radius:12px"
+                      src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator`}
+                      width="100%"
+                      height="152"
+                      frameborder="0"
+                      allowfullscreen=""
+                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                      loading="lazy"
+                    />
+                  </div>
+                ) : (
+                  <a
+                    href={submission.songLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="external-link"
+                  >
+                    Öppna låt i Spotify →
+                  </a>
+                )}
+
+                <div class="guess-section">
+                  <label for={`guess_${submission.id}`} class="guess-label">
+                    Vem tror du skickade in denna?
+                  </label>
+                  <select
+                    id={`guess_${submission.id}`}
+                    name={`guess_${submission.id}`}
+                    class="guess-select"
+                    required
+                  >
+                    <option value="">-- Välj deltagare --</option>
+                    {participants.map((participant) => (
+                      <option
+                        value={participant.id}
+                        selected={existingGuess === participant.id}
+                      >
+                        {participant.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            );
+          })
+        }
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-primary btn-large">
+          Spara gissningar
+        </button>
+      </div>
+    </form>
+
+    {/* Admin controls */}
+    {
+      isAdmin && (
+        <div class="admin-section">
+          <h3>⚠️ Administratör</h3>
+          <p class="warning-text">
+            Varning: Återställning till öppet läge kommer att radera alla
+            gissningar som har gjorts.
+          </p>
+          <form
+            method="POST"
+            onsubmit="return confirm('Är du säker? Detta kommer att radera alla gissningar och öppna quizet för nya låtinlämningar.');"
+          >
+            <input type="hidden" name="action" value="reset_to_open" />
+            <button type="submit" class="btn-danger">
+              Återställ till öppet läge och radera alla gissningar
+            </button>
+          </form>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<style>
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .header {
+    margin-bottom: 2rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    color: #6b7280;
+    text-decoration: none;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    transition: color 0.2s;
+  }
+
+  .back-link:hover {
+    color: #1f2937;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: #1f2937;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .subtitle {
+    color: #6b7280;
+    font-size: 1.125rem;
+    margin: 0;
+  }
+
+  .info-box {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .info-box p {
+    margin: 0;
+    color: #1e40af;
+    font-size: 0.875rem;
+  }
+
+  .error-message,
+  .success-message {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .error-message {
+    background-color: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+  }
+
+  .success-message {
+    background-color: #d1fae5;
+    border: 1px solid #6ee7b7;
+    color: #065f46;
+  }
+
+  .guessing-form {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .songs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .song-card {
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+  }
+
+  .song-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    gap: 1rem;
+  }
+
+  .song-header h3 {
+    font-size: 1.125rem;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  .song-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1f2937;
+  }
+
+  .artist {
+    color: #6b7280;
+    margin: 0 0 1rem 0;
+    font-size: 0.875rem;
+  }
+
+  .spotify-embed {
+    margin: 1rem 0;
+  }
+
+  .external-link {
+    display: inline-block;
+    color: #0070f3;
+    text-decoration: none;
+    font-weight: 600;
+    margin: 1rem 0;
+  }
+
+  .external-link:hover {
+    text-decoration: underline;
+  }
+
+  .guess-section {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .guess-label {
+    display: block;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+  }
+
+  .guess-select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-family: inherit;
+    background-color: white;
+    cursor: pointer;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
+  }
+
+  .guess-select:focus {
+    outline: none;
+    border-color: #0070f3;
+    box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
+  }
+
+  .form-actions {
+    position: sticky;
+    bottom: 2rem;
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    border: 2px solid #0070f3;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    text-align: center;
+  }
+
+  .btn-primary,
+  .btn-danger {
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  .btn-primary {
+    background-color: #0070f3;
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background-color: #0051cc;
+  }
+
+  .btn-large {
+    padding: 1rem 2rem;
+    font-size: 1.125rem;
+  }
+
+  .btn-danger {
+    background-color: #ef4444;
+    color: white;
+  }
+
+  .btn-danger:hover {
+    background-color: #dc2626;
+  }
+
+  .admin-section {
+    margin-top: 3rem;
+    padding: 2rem;
+    background: #fef2f2;
+    border: 2px solid #fca5a5;
+    border-radius: 0.75rem;
+  }
+
+  .admin-section h3 {
+    color: #991b1b;
+    margin: 0 0 1rem 0;
+    font-size: 1.125rem;
+  }
+
+  .warning-text {
+    color: #991b1b;
+    margin: 0 0 1.5rem 0;
+    font-weight: 500;
+  }
+
+  @media (max-width: 768px) {
+    .container {
+      padding: 1rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    .song-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .form-actions {
+      position: static;
+      margin-top: 2rem;
+    }
+  }
+</style>

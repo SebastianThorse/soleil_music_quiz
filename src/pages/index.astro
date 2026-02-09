@@ -1,8 +1,487 @@
 ---
+// src/pages/index.astro
 import Layout from '../layouts/Layout.astro';
-import SignIn from '../components/SignIn';
+import { db } from '../lib/db'; // Your Drizzle db instance
+import {
+  quizzes,
+  songSubmissions,
+  quizParticipants,
+  guesses,
+} from '../lib/db/schema';
+import { eq, and, inArray, sql, desc } from 'drizzle-orm';
+
+const { user, session } = Astro.locals;
+const initialSession = user && session ? { user, session } : null;
+
+let activeQuizzes: any[] = [];
+let completedQuizzes: any[] = [];
+
+if (user) {
+  // Get active quizzes (open or guessing status)
+  const activeQuizzesData = await db
+    .select({
+      id: quizzes.id,
+      name: quizzes.name,
+      description: quizzes.description,
+      status: quizzes.status,
+      createdAt: quizzes.createdAt,
+      submissionCount: sql<number>`count(distinct ${songSubmissions.id})`,
+      participantCount: sql<number>`count(distinct ${quizParticipants.userId})`,
+      hasSubmitted: sql<number>`exists(
+        select 1 from ${songSubmissions} 
+        where ${songSubmissions.quizId} = ${quizzes.id} 
+        and ${songSubmissions.userId} = ${user.id}
+      )`,
+    })
+    .from(quizzes)
+    .leftJoin(songSubmissions, eq(quizzes.id, songSubmissions.quizId))
+    .leftJoin(quizParticipants, eq(quizzes.id, quizParticipants.quizId))
+    .where(inArray(quizzes.status, ['open', 'guessing']))
+    .groupBy(quizzes.id)
+    .orderBy(desc(quizzes.createdAt));
+
+  activeQuizzes = activeQuizzesData;
+
+  // Get completed quizzes
+  const completedQuizzesData = await db
+    .select({
+      id: quizzes.id,
+      name: quizzes.name,
+      description: quizzes.description,
+      closedAt: quizzes.closedAt,
+      submissionCount: sql<number>`count(distinct ${songSubmissions.id})`,
+      participantCount: sql<number>`count(distinct ${quizParticipants.userId})`,
+    })
+    .from(quizzes)
+    .leftJoin(songSubmissions, eq(quizzes.id, songSubmissions.quizId))
+    .leftJoin(quizParticipants, eq(quizzes.id, quizParticipants.quizId))
+    .where(eq(quizzes.status, 'completed'))
+    .groupBy(quizzes.id)
+    .orderBy(desc(quizzes.closedAt))
+    .limit(10);
+
+  // Get guess statistics for completed quizzes
+  for (const quiz of completedQuizzesData) {
+    const guessStats = await db
+      .select({
+        correctGuesses: sql<number>`count(*) filter (where ${guesses.isCorrect} = 1)`,
+        totalGuesses: sql<number>`count(*)`,
+      })
+      .from(guesses)
+      .where(and(eq(guesses.quizId, quiz.id), eq(guesses.guesserId, user.id)));
+
+    (quiz as any).correctGuesses = guessStats[0]?.correctGuesses || 0;
+    (quiz as any).totalGuesses = guessStats[0]?.totalGuesses || 0;
+  }
+
+  completedQuizzes = completedQuizzesData;
+}
+
+const getStatusText = (status: string) => {
+  switch (status) {
+    case 'open':
+      return 'Öppen för låtinlämning';
+    case 'guessing':
+      return 'Gissningsfas';
+    case 'completed':
+      return 'Avslutad';
+    default:
+      return status;
+  }
+};
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'open':
+      return '#10b981'; // green
+    case 'guessing':
+      return '#f59e0b'; // orange
+    case 'completed':
+      return '#6b7280'; // gray
+    default:
+      return '#6b7280';
+  }
+};
 ---
 
 <Layout>
-  <SignIn client:load />
+  <div class="container">
+    <header class="hero">
+      <h1>Välkommen till Soleil Musikquiz! 🎵</h1>
+      {
+        user ? (
+          <p class="subtitle">
+            Hej {user.name}! Redo att testa dina musikkunskaper?
+          </p>
+        ) : (
+          <p class="subtitle">Logga in för att delta i quizen</p>
+        )
+      }
+    </header>
+
+    {
+      user ? (
+        <>
+          <section class="quiz-section">
+            <div class="section-header">
+              <h2>Aktiva Quiz</h2>
+              <a href="/quiz/new" class="btn-primary">
+                + Skapa Nytt Quiz
+              </a>
+            </div>
+
+            {activeQuizzes.length > 0 ? (
+              <div class="quiz-grid">
+                {activeQuizzes.map((quiz: any) => (
+                  <a href={`/quiz/${quiz.id}`} class="quiz-card">
+                    <div class="quiz-card-header">
+                      <h3>{quiz.name}</h3>
+                      <span
+                        class="status-badge"
+                        style={`background-color: ${getStatusColor(quiz.status)}`}
+                      >
+                        {getStatusText(quiz.status)}
+                      </span>
+                    </div>
+
+                    {quiz.description && (
+                      <p class="quiz-description">{quiz.description}</p>
+                    )}
+
+                    <div class="quiz-stats">
+                      <div class="stat">
+                        <span class="stat-label">Deltagare</span>
+                        <span class="stat-value">{quiz.participantCount}</span>
+                      </div>
+                      <div class="stat">
+                        <span class="stat-label">Låtar</span>
+                        <span class="stat-value">{quiz.submissionCount}</span>
+                      </div>
+                    </div>
+
+                    {quiz.status === 'open' && (
+                      <div class="quiz-action">
+                        {quiz.hasSubmitted ? (
+                          <span class="submitted-badge">
+                            ✓ Du har skickat in din låt
+                          </span>
+                        ) : (
+                          <span class="action-text">→ Skicka in din låt</span>
+                        )}
+                      </div>
+                    )}
+
+                    {quiz.status === 'guessing' && (
+                      <div class="quiz-action">
+                        <span class="action-text">
+                          → Gissa vem som skickade vad
+                        </span>
+                      </div>
+                    )}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div class="empty-state">
+                <p>Inga aktiva quiz just nu. Varför inte skapa ett?</p>
+                <a href="/quiz/new" class="btn-secondary">
+                  Skapa Quiz
+                </a>
+              </div>
+            )}
+          </section>
+
+          <section class="quiz-section">
+            <h2>Avslutade Quiz</h2>
+
+            {completedQuizzes.length > 0 ? (
+              <div class="quiz-grid">
+                {completedQuizzes.map((quiz: any) => (
+                  <a
+                    href={`/quiz/${quiz.id}/results`}
+                    class="quiz-card completed"
+                  >
+                    <div class="quiz-card-header">
+                      <h3>{quiz.name}</h3>
+                      <span
+                        class="status-badge"
+                        style={`background-color: ${getStatusColor('completed')}`}
+                      >
+                        Avslutad
+                      </span>
+                    </div>
+
+                    {quiz.description && (
+                      <p class="quiz-description">{quiz.description}</p>
+                    )}
+
+                    <div class="quiz-stats">
+                      <div class="stat">
+                        <span class="stat-label">Dina rätta</span>
+                        <span class="stat-value">
+                          {quiz.correctGuesses}/{quiz.totalGuesses}
+                        </span>
+                      </div>
+                      <div class="stat">
+                        <span class="stat-label">Deltagare</span>
+                        <span class="stat-value">{quiz.participantCount}</span>
+                      </div>
+                    </div>
+
+                    <div class="quiz-action">
+                      <span class="action-text">→ Se resultat</span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div class="empty-state">
+                <p>Inga avslutade quiz ännu.</p>
+              </div>
+            )}
+          </section>
+        </>
+      ) : (
+        <section class="cta-section">
+          <div class="cta-card">
+            <h2>Kom igång!</h2>
+            <p>
+              Logga in för att delta i Soleils musikquiz. Skicka in dina
+              favoritlåtar och gissa vem som valde vad!
+            </p>
+            <a href="/login" class="btn-primary">
+              Logga In
+            </a>
+          </div>
+        </section>
+      )
+    }
+  </div>
 </Layout>
+
+<style>
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .hero {
+    text-align: center;
+    margin-bottom: 3rem;
+    padding: 2rem 0;
+  }
+
+  .hero h1 {
+    font-size: 2.5rem;
+    color: #1f2937;
+    margin-bottom: 0.5rem;
+  }
+
+  .subtitle {
+    font-size: 1.25rem;
+    color: #6b7280;
+  }
+
+  .quiz-section {
+    margin-bottom: 3rem;
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .section-header h2 {
+    font-size: 1.875rem;
+    color: #1f2937;
+  }
+
+  .btn-primary {
+    background-color: #0070f3;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    text-decoration: none;
+    font-weight: 600;
+    transition: background-color 0.2s;
+  }
+
+  .btn-primary:hover {
+    background-color: #0051cc;
+  }
+
+  .btn-secondary {
+    background-color: #f3f4f6;
+    color: #1f2937;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    text-decoration: none;
+    font-weight: 600;
+    transition: background-color 0.2s;
+  }
+
+  .btn-secondary:hover {
+    background-color: #e5e7eb;
+  }
+
+  .quiz-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .quiz-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .quiz-card:hover {
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .quiz-card.completed {
+    opacity: 0.9;
+  }
+
+  .quiz-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 1rem;
+    gap: 1rem;
+  }
+
+  .quiz-card-header h3 {
+    font-size: 1.25rem;
+    color: #1f2937;
+    margin: 0;
+    flex: 1;
+  }
+
+  .status-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: white;
+    white-space: nowrap;
+  }
+
+  .quiz-description {
+    color: #6b7280;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+  }
+
+  .quiz-stats {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #f3f4f6;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1f2937;
+  }
+
+  .quiz-action {
+    margin-top: auto;
+    padding-top: 1rem;
+  }
+
+  .action-text {
+    color: #0070f3;
+    font-weight: 600;
+  }
+
+  .submitted-badge {
+    color: #10b981;
+    font-weight: 600;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    background: #f9fafb;
+    border-radius: 0.75rem;
+  }
+
+  .empty-state p {
+    color: #6b7280;
+    margin-bottom: 1rem;
+  }
+
+  .cta-section {
+    display: flex;
+    justify-content: center;
+    margin-top: 4rem;
+  }
+
+  .cta-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 3rem;
+    text-align: center;
+    max-width: 500px;
+  }
+
+  .cta-card h2 {
+    font-size: 2rem;
+    color: #1f2937;
+    margin-bottom: 1rem;
+  }
+
+  .cta-card p {
+    color: #6b7280;
+    margin-bottom: 2rem;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 768px) {
+    .container {
+      padding: 1rem;
+    }
+
+    .hero h1 {
+      font-size: 1.875rem;
+    }
+
+    .section-header {
+      flex-direction: column;
+      align-items: start;
+      gap: 1rem;
+    }
+
+    .quiz-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

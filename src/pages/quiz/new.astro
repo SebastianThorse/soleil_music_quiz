@@ -1,0 +1,319 @@
+---
+// src/pages/quiz/new.astro
+import Layout from '../../layouts/Layout.astro';
+
+const { user } = Astro.locals;
+
+// Redirect if not logged in
+if (!user) {
+  return Astro.redirect('/login?redirect=/quiz/new');
+}
+
+let error = '';
+let success = false;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const formData = await Astro.request.formData();
+    const name = formData.get('name')?.toString();
+    const description = formData.get('description')?.toString();
+
+    if (!name || name.trim() === '') {
+      error = 'Quiznamn krävs';
+    } else {
+      const { db } = await import('../../lib/db');
+      const { quizzes, quizAdmins } = await import('../../lib/db/schema');
+
+      // Create quiz and add creator as admin in a transaction
+      const result = await db.transaction(async (tx) => {
+        const [newQuiz] = await tx
+          .insert(quizzes)
+          .values({
+            name: name.trim(),
+            description: description?.trim() || null,
+            createdBy: user.id,
+            status: 'open',
+          })
+          .returning();
+
+        await tx.insert(quizAdmins).values({
+          quizId: newQuiz.id,
+          userId: user.id,
+          addedBy: null, // Creator has no "added by"
+        });
+
+        return newQuiz;
+      });
+
+      // Redirect to the new quiz page
+      return Astro.redirect(`/quiz/${result.id}`);
+    }
+  } catch (e: any) {
+    console.error('Error creating quiz:', e);
+    error = 'Ett fel uppstod när quizet skapades. Försök igen.';
+  }
+}
+---
+
+<Layout>
+  <div class="container">
+    <div class="header">
+      <a href="/" class="back-link">← Tillbaka till startsidan</a>
+      <h1>Skapa Nytt Quiz</h1>
+      <p class="subtitle">
+        Skapa ett nytt musikquiz för dina kollegor på Soleil
+      </p>
+    </div>
+
+    <div class="form-container">
+      <form method="POST" class="quiz-form">
+        {error && <div class="error-message">{error}</div>}
+
+        <div class="form-group">
+          <label for="name" class="form-label">
+            Quiznamn <span class="required">*</span>
+          </label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            class="form-input"
+            placeholder="t.ex. Fredagens Musikquiz, 90-tals Hits, Julmusik 2024"
+            required
+            maxlength="100"
+            autofocus
+          />
+          <p class="form-help">Ge ditt quiz ett roligt och beskrivande namn</p>
+        </div>
+
+        <div class="form-group">
+          <label for="description" class="form-label"> Beskrivning </label>
+          <textarea
+            id="description"
+            name="description"
+            class="form-textarea"
+            placeholder="Beskriv temat eller reglerna för quizet (valfritt)"
+            rows="4"
+            maxlength="500"></textarea>
+          <p class="form-help">Valfri beskrivning av quizet, max 500 tecken</p>
+        </div>
+
+        <div class="info-box">
+          <h3>Hur fungerar det?</h3>
+          <ol>
+            <li>Du skapar quizet och blir automatiskt administratör</li>
+            <li>
+              Dela länken med dina kollegor så de kan skicka in sina låtar
+            </li>
+            <li>När alla har skickat in stänger du inlämningen</li>
+            <li>Deltagarna gissar vem som skickade vilken låt</li>
+            <li>Se vem som gissade rätt och få en topplista!</li>
+          </ol>
+        </div>
+
+        <div class="form-actions">
+          <a href="/" class="btn-secondary">Avbryt</a>
+          <button type="submit" class="btn-primary"> Skapa Quiz </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .container {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .header {
+    margin-bottom: 2rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    color: #6b7280;
+    text-decoration: none;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    transition: color 0.2s;
+  }
+
+  .back-link:hover {
+    color: #1f2937;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: #1f2937;
+    margin-bottom: 0.5rem;
+  }
+
+  .subtitle {
+    color: #6b7280;
+    font-size: 1.125rem;
+  }
+
+  .form-container {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 2rem;
+  }
+
+  .quiz-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .error-message {
+    background-color: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .form-label {
+    font-weight: 600;
+    color: #1f2937;
+    font-size: 0.875rem;
+  }
+
+  .required {
+    color: #ef4444;
+  }
+
+  .form-input,
+  .form-textarea {
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-family: inherit;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
+  }
+
+  .form-input:focus,
+  .form-textarea:focus {
+    outline: none;
+    border-color: #0070f3;
+    box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
+  }
+
+  .form-textarea {
+    resize: vertical;
+    min-height: 100px;
+  }
+
+  .form-help {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  .info-box {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+  }
+
+  .info-box h3 {
+    font-size: 1rem;
+    color: #1f2937;
+    margin: 0 0 1rem 0;
+  }
+
+  .info-box ol {
+    margin: 0;
+    padding-left: 1.5rem;
+    color: #4b5563;
+    font-size: 0.875rem;
+  }
+
+  .info-box li {
+    margin-bottom: 0.5rem;
+  }
+
+  .info-box li:last-child {
+    margin-bottom: 0;
+  }
+
+  .form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    padding-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  .btn-primary {
+    background-color: #0070f3;
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background-color: #0051cc;
+  }
+
+  .btn-secondary {
+    background-color: #f3f4f6;
+    color: #1f2937;
+  }
+
+  .btn-secondary:hover {
+    background-color: #e5e7eb;
+  }
+
+  @media (max-width: 768px) {
+    .container {
+      padding: 1rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    .subtitle {
+      font-size: 1rem;
+    }
+
+    .form-container {
+      padding: 1.5rem;
+    }
+
+    .form-actions {
+      flex-direction: column-reverse;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+      width: 100%;
+      text-align: center;
+    }
+  }
+</style>
