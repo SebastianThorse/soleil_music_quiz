@@ -5,4 +5,4 @@ const { user, session } = Astro.locals;
 const initialSession = user && session ? { user, session } : null;
 ---
 
-<SignIn client:load initialSession={initialSession} />
+<SignIn client:only="react" initialSession={initialSession} />

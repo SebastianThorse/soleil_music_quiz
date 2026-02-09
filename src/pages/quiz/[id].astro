@@ -196,6 +196,14 @@ const getStatusColor = (status: string) => {
         </span>
       </div>
       {quiz.description && <p class="description">{quiz.description}</p>}
+      {
+        isAdmin && (
+          <p class="description">
+            Du är administratör för detta quiz.
+            <a href={`/quiz/${id}/admin`}>Gå till administrationssidan</a>
+          </p>
+        )
+      }
 
       <div class="quiz-stats">
         <div class="stat-item">

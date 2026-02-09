@@ -1,0 +1,644 @@
+---
+// src/pages/quiz/[id]/admin.astro
+import Layout from '../../../layouts/Layout.astro';
+import { db } from '../../../lib/db';
+import {
+  quizzes,
+  quizAdmins,
+  quizParticipants,
+  user as userTable,
+} from '../../../lib/db/schema';
+import { eq, and } from 'drizzle-orm';
+
+const { user } = Astro.locals;
+const { id } = Astro.params;
+
+// Redirect if not logged in
+if (!user) {
+  return Astro.redirect(`/login?redirect=/quiz/${id}/admin`);
+}
+
+// Get quiz details
+const [quiz] = await db
+  .select()
+  .from(quizzes)
+  .where(eq(quizzes.id, parseInt(id!)))
+  .limit(1);
+
+if (!quiz) {
+  return Astro.redirect('/');
+}
+
+// Check if user is admin
+const [isAdmin] = await db
+  .select()
+  .from(quizAdmins)
+  .where(and(eq(quizAdmins.quizId, quiz.id), eq(quizAdmins.userId, user.id)))
+  .limit(1);
+
+// Redirect if not admin
+if (!isAdmin) {
+  return Astro.redirect(`/quiz/${id}`);
+}
+
+// Get all admins
+const adminsList = (await db
+  .select({
+    id: quizAdmins.id,
+    userId: userTable.id,
+    userName: userTable.name,
+    userEmail: userTable.email,
+    addedAt: quizAdmins.addedAt,
+  })
+  .from(quizAdmins)
+  .innerJoin(userTable, eq(quizAdmins.userId, userTable.id))
+  .where(eq(quizAdmins.quizId, quiz.id)))
+  .map((admin) => ({
+    ...admin,
+    isCreator: admin.userId === quiz.createdBy,
+  }));
+
+// Get all participants (to add as admins)
+const participants = await db
+  .select({
+    id: userTable.id,
+    name: userTable.name,
+    email: userTable.email,
+  })
+  .from(quizParticipants)
+  .innerJoin(userTable, eq(quizParticipants.userId, userTable.id))
+  .where(eq(quizParticipants.quizId, quiz.id));
+
+// Filter out users who are already admins
+const adminUserIds = new Set(adminsList.map((a) => a.userId));
+const nonAdminParticipants = participants.filter(
+  (p) => !adminUserIds.has(p.id),
+);
+
+let error = '';
+let success = '';
+
+// Handle POST requests
+if (Astro.request.method === 'POST') {
+  try {
+    const formData = await Astro.request.formData();
+    const action = formData.get('action')?.toString();
+
+    if (action === 'update_quiz') {
+      const name = formData.get('name')?.toString();
+      const description = formData.get('description')?.toString();
+
+      if (!name || name.trim() === '') {
+        error = 'Quiznamn krävs';
+      } else {
+        await db
+          .update(quizzes)
+          .set({
+            name: name.trim(),
+            description: description?.trim() || null,
+          })
+          .where(eq(quizzes.id, quiz.id));
+
+        success = 'Quiz uppdaterat!';
+        return Astro.redirect(`/quiz/${id}/admin`);
+      }
+    } else if (action === 'add_admin') {
+      const newAdminId = formData.get('user_id')?.toString();
+
+      if (!newAdminId) {
+        error = 'Välj en användare';
+      } else {
+        // Check if already admin
+        const [existing] = await db
+          .select()
+          .from(quizAdmins)
+          .where(
+            and(
+              eq(quizAdmins.quizId, quiz.id),
+              eq(quizAdmins.userId, newAdminId),
+            ),
+          )
+          .limit(1);
+
+        if (existing) {
+          error = 'Användaren är redan administratör';
+        } else {
+          await db.insert(quizAdmins).values({
+            quizId: quiz.id,
+            userId: newAdminId,
+            addedBy: user.id,
+          });
+
+          success = 'Administratör tillagd!';
+          return Astro.redirect(`/quiz/${id}/admin`);
+        }
+      }
+    } else if (action === 'remove_admin') {
+      const adminIdToRemove = formData.get('admin_id')?.toString();
+
+      if (!adminIdToRemove) {
+        error = 'Ogiltig administratör';
+      } else {
+        // Get the admin entry
+        const [adminEntry] = await db
+          .select()
+          .from(quizAdmins)
+          .where(eq(quizAdmins.id, parseInt(adminIdToRemove)))
+          .limit(1);
+
+        // Don't allow removing the creator
+        if (adminEntry && adminEntry.userId === quiz.createdBy) {
+          error = 'Kan inte ta bort quizets skapare som administratör';
+        } else {
+          await db
+            .delete(quizAdmins)
+            .where(eq(quizAdmins.id, parseInt(adminIdToRemove)));
+
+          success = 'Administratör borttagen!';
+          return Astro.redirect(`/quiz/${id}/admin`);
+        }
+      }
+    } else if (action === 'delete_quiz') {
+      const confirmation = formData.get('confirm_delete')?.toString();
+
+      if (confirmation !== quiz.name) {
+        error = 'Bekräftelsen matchar inte quiznamnet';
+      } else {
+        // Only creator can delete
+        if (quiz.createdBy !== user.id) {
+          error = 'Endast quizets skapare kan radera det';
+        } else {
+          await db.delete(quizzes).where(eq(quizzes.id, quiz.id));
+          return Astro.redirect('/?deleted=true');
+        }
+      }
+    }
+  } catch (e: any) {
+    console.error('Admin action error:', e);
+    error = 'Ett fel uppstod. Försök igen.';
+  }
+}
+---
+
+<Layout>
+  <div class="container">
+    <div class="header">
+      <a href={`/quiz/${id}`} class="back-link">← Tillbaka till quizet</a>
+      <h1>Administrera Quiz</h1>
+      <h2>{quiz.name}</h2>
+    </div>
+
+    {error && <div class="error-message">{error}</div>}
+
+    {success && <div class="success-message">{success}</div>}
+
+    <!-- Edit Quiz Details -->
+    <div class="section">
+      <h3>Redigera Quiz</h3>
+      <form method="POST" class="form">
+        <input type="hidden" name="action" value="update_quiz" />
+
+        <div class="form-group">
+          <label for="name" class="form-label">
+            Quiznamn <span class="required">*</span>
+          </label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            class="form-input"
+            value={quiz.name}
+            required
+            maxlength="100"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="description" class="form-label"> Beskrivning </label>
+          <textarea
+            id="description"
+            name="description"
+            class="form-textarea"
+            rows="4"
+            maxlength="500">{quiz.description || ''}</textarea
+          >
+        </div>
+
+        <button type="submit" class="btn-primary"> Spara ändringar </button>
+      </form>
+    </div>
+
+    <!-- Manage Admins -->
+    <div class="section">
+      <h3>Administratörer</h3>
+
+      <div class="admins-list">
+        {
+          adminsList.map((admin) => (
+            <div class="admin-item">
+              <div class="admin-info">
+                <div class="admin-name">
+                  {admin.userName}
+                  {admin.userId === quiz.createdBy && (
+                    <span class="creator-badge">Skapare</span>
+                  )}
+                </div>
+                <div class="admin-email">{admin.userEmail}</div>
+              </div>
+              {admin.userId !== quiz.createdBy && (
+                <form method="POST" style="margin: 0;">
+                  <input type="hidden" name="action" value="remove_admin" />
+                  <input type="hidden" name="admin_id" value={admin.id} />
+                  <button
+                    type="submit"
+                    class="btn-remove"
+                    onclick="return confirm('Är du säker på att du vill ta bort denna administratör?')"
+                  >
+                    Ta bort
+                  </button>
+                </form>
+              )}
+            </div>
+          ))
+        }
+      </div>
+
+      {
+        nonAdminParticipants.length > 0 && (
+          <div class="add-admin-section">
+            <h4>Lägg till administratör</h4>
+            <form method="POST" class="add-admin-form">
+              <input type="hidden" name="action" value="add_admin" />
+              <select name="user_id" class="form-select" required>
+                <option value="">-- Välj deltagare --</option>
+                {nonAdminParticipants.map((participant) => (
+                  <option value={participant.id}>
+                    {participant.name} ({participant.email})
+                  </option>
+                ))}
+              </select>
+              <button type="submit" class="btn-secondary">
+                Lägg till
+              </button>
+            </form>
+          </div>
+        )
+      }
+    </div>
+
+    <!-- Danger Zone -->
+    {
+      quiz.createdBy === user.id && (
+        <div class="section danger-section">
+          <h3>⚠️ Farlig zon</h3>
+          <p class="warning-text">
+            Radering av quizet är permanent och kan inte ångras. Alla låtar,
+            gissningar och resultat kommer att raderas.
+          </p>
+
+          <details class="delete-details">
+            <summary class="delete-summary">Radera quiz permanent</summary>
+            <div class="delete-content">
+              <form method="POST" class="delete-form">
+                <input type="hidden" name="action" value="delete_quiz" />
+
+                <div class="form-group">
+                  <label for="confirm_delete" class="form-label">
+                    Skriv quiznamnet "<strong>{quiz.name}</strong>" för att
+                    bekräfta radering
+                  </label>
+                  <input
+                    type="text"
+                    id="confirm_delete"
+                    name="confirm_delete"
+                    class="form-input"
+                    placeholder={quiz.name}
+                    required
+                  />
+                </div>
+
+                <button type="submit" class="btn-danger">
+                  Radera quiz permanent
+                </button>
+              </form>
+            </div>
+          </details>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<style>
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .header {
+    margin-bottom: 2rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    color: #6b7280;
+    text-decoration: none;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    transition: color 0.2s;
+  }
+
+  .back-link:hover {
+    color: #1f2937;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: #1f2937;
+    margin: 0 0 0.5rem 0;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+    color: #6b7280;
+    margin: 0;
+    font-weight: 400;
+  }
+
+  h3 {
+    font-size: 1.5rem;
+    color: #1f2937;
+    margin: 0 0 1.5rem 0;
+  }
+
+  h4 {
+    font-size: 1.125rem;
+    color: #1f2937;
+    margin: 0 0 1rem 0;
+  }
+
+  .error-message,
+  .success-message {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .error-message {
+    background-color: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+  }
+
+  .success-message {
+    background-color: #d1fae5;
+    border: 1px solid #6ee7b7;
+    color: #065f46;
+  }
+
+  .section {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 2rem;
+    margin-bottom: 2rem;
+  }
+
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .form-label {
+    font-weight: 600;
+    color: #1f2937;
+    font-size: 0.875rem;
+  }
+
+  .required {
+    color: #ef4444;
+  }
+
+  .form-input,
+  .form-textarea,
+  .form-select {
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-family: inherit;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
+  }
+
+  .form-input:focus,
+  .form-textarea:focus,
+  .form-select:focus {
+    outline: none;
+    border-color: #0070f3;
+    box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
+  }
+
+  .form-textarea {
+    resize: vertical;
+    min-height: 100px;
+  }
+
+  .admins-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .admin-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: #f9fafb;
+    border-radius: 0.5rem;
+    border: 1px solid #e5e7eb;
+  }
+
+  .admin-info {
+    flex: 1;
+  }
+
+  .admin-name {
+    font-weight: 600;
+    color: #1f2937;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .creator-badge {
+    background: #0070f3;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .admin-email {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+  }
+
+  .add-admin-section {
+    padding-top: 2rem;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .add-admin-form {
+    display: flex;
+    gap: 1rem;
+  }
+
+  .add-admin-form select {
+    flex: 1;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-remove,
+  .btn-danger {
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background-color: #0070f3;
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background-color: #0051cc;
+  }
+
+  .btn-secondary {
+    background-color: #f3f4f6;
+    color: #1f2937;
+  }
+
+  .btn-secondary:hover {
+    background-color: #e5e7eb;
+  }
+
+  .btn-remove {
+    background-color: #fee2e2;
+    color: #991b1b;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .btn-remove:hover {
+    background-color: #fca5a5;
+  }
+
+  .btn-danger {
+    background-color: #ef4444;
+    color: white;
+  }
+
+  .btn-danger:hover {
+    background-color: #dc2626;
+  }
+
+  .danger-section {
+    background: #fef2f2;
+    border-color: #fca5a5;
+  }
+
+  .danger-section h3 {
+    color: #991b1b;
+  }
+
+  .warning-text {
+    color: #991b1b;
+    margin-bottom: 1.5rem;
+  }
+
+  .delete-details {
+    background: white;
+    border: 2px solid #fca5a5;
+    border-radius: 0.5rem;
+    padding: 1rem;
+  }
+
+  .delete-summary {
+    font-weight: 600;
+    color: #991b1b;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  .delete-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .delete-summary::before {
+    content: '▶ ';
+    display: inline-block;
+    transition: transform 0.2s;
+  }
+
+  .delete-details[open] .delete-summary::before {
+    transform: rotate(90deg);
+  }
+
+  .delete-content {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #fca5a5;
+  }
+
+  .delete-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  @media (max-width: 768px) {
+    .container {
+      padding: 1rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    .section {
+      padding: 1rem;
+    }
+
+    .admin-item {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+
+    .add-admin-form {
+      flex-direction: column;
+    }
+  }
+</style>
