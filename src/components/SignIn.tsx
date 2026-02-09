@@ -15,7 +15,7 @@ export default function AuthButtons({ initialSession }: Props) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [redirectUrl, setRedirectUrl] = useState('/dashboard');
+  const [redirectUrl, setRedirectUrl] = useState('/');
 
   // Get redirect URL from query params
   useEffect(() => {

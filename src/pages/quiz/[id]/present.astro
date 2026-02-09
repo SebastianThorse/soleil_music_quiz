@@ -1,0 +1,126 @@
+---
+// src/pages/quiz/[id]/present.astro
+import Layout from '../../../layouts/Layout.astro';
+import { db } from '../../../lib/db';
+import {
+  quizzes,
+  songSubmissions,
+  guesses,
+  quizParticipants,
+  user as userTable,
+} from '../../../lib/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+import QuizPresentation from '../../../components/QuizPresentation';
+
+const { user } = Astro.locals;
+const { id } = Astro.params;
+
+// Redirect if not logged in
+if (!user) {
+  return Astro.redirect(`/login?redirect=/quiz/${id}/present`);
+}
+
+// Get quiz details
+const [quiz] = await db
+  .select()
+  .from(quizzes)
+  .where(eq(quizzes.id, parseInt(id!)))
+  .limit(1);
+
+if (!quiz) {
+  return Astro.redirect('/');
+}
+
+// Get all submissions with submitter info
+const submissions = await db
+  .select({
+    id: songSubmissions.id,
+    songLink: songSubmissions.songLink,
+    songTitle: songSubmissions.songTitle,
+    artist: songSubmissions.artist,
+    userId: songSubmissions.userId,
+    userName: userTable.name,
+  })
+  .from(songSubmissions)
+  .innerJoin(userTable, eq(songSubmissions.userId, userTable.id))
+  .where(eq(songSubmissions.quizId, quiz.id));
+
+// Get all participants
+const participants = await db
+  .select({
+    id: userTable.id,
+    name: userTable.name,
+  })
+  .from(quizParticipants)
+  .innerJoin(userTable, eq(quizParticipants.userId, userTable.id))
+  .where(eq(quizParticipants.quizId, quiz.id));
+
+// Get all guesses for this quiz
+const allGuesses = await db
+  .select({
+    songSubmissionId: guesses.songSubmissionId,
+    guesserId: guesses.guesserId,
+    guesserName: userTable.name,
+    guessedUserId: guesses.guessedUserId,
+    isCorrect: guesses.isCorrect,
+  })
+  .from(guesses)
+  .innerJoin(userTable, eq(guesses.guesserId, userTable.id))
+  .where(eq(guesses.quizId, quiz.id));
+
+// Calculate final leaderboard (for the end)
+const leaderboardData = await db
+  .select({
+    userId: userTable.id,
+    userName: userTable.name,
+    correctGuesses: sql<number>`count(*) filter (where ${guesses.isCorrect} = 1)`,
+    totalGuesses: sql<number>`count(*)`,
+  })
+  .from(guesses)
+  .innerJoin(userTable, eq(guesses.guesserId, userTable.id))
+  .where(eq(guesses.quizId, quiz.id))
+  .groupBy(userTable.id)
+  .orderBy(sql`count(*) filter (where ${guesses.isCorrect} = 1) DESC`);
+
+// Shuffle submissions for random order (consistent with quiz ID)
+const shuffledSubmissions = [...submissions].sort((a, b) => {
+  const hashA = (a.id * quiz.id) % 1000;
+  const hashB = (b.id * quiz.id) % 1000;
+  return hashA - hashB;
+});
+
+// For each submission, get guess distribution
+const submissionsWithGuesses = shuffledSubmissions.map((submission) => {
+  const songGuesses = allGuesses.filter(
+    (g) => g.songSubmissionId === submission.id,
+  );
+
+  // Count guesses per participant - INCLUDE ALL PARTICIPANTS
+  const guessDistribution = participants.map((participant) => {
+    const guessesForThisPerson = songGuesses.filter(
+      (g) => g.guessedUserId === participant.id,
+    );
+    const guessers = guessesForThisPerson.map((g) => g.guesserName);
+
+    return {
+      participantId: participant.id,
+      participantName: participant.name,
+      guessCount: guessesForThisPerson.length,
+      guessers: guessers,
+      isCorrect: participant.id === submission.userId,
+    };
+  }); // Show ALL participants, not just those with guesses
+
+  return {
+    ...submission,
+    guessDistribution,
+  };
+});
+---
+
+<QuizPresentation
+  client:only="react"
+  quizName={quiz.name}
+  submissions={submissionsWithGuesses}
+  leaderboard={leaderboardData}
+/>

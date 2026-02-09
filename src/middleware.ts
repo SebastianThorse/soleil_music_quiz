@@ -17,7 +17,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   // Define protected routes that require authentication
-  const protectedRoutes = ['/dashboard', '/quiz'];
+  const protectedRoutes = ['/quiz'];
   const isProtectedRoute = protectedRoutes.some((route) =>
     context.url.pathname.startsWith(route),
   );
@@ -32,7 +32,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // Redirect to dashboard if logged in user tries to access login page
   if (context.url.pathname === '/login' && isAuthed) {
     const redirectParam = context.url.searchParams.get('redirect');
-    return context.redirect(redirectParam || '/dashboard');
+    return context.redirect(redirectParam || '/');
   }
 
   return next();

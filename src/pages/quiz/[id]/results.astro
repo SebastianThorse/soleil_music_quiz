@@ -1,0 +1,167 @@
+---
+// src/pages/quiz/[id]/results.astro
+import Layout from '../../../layouts/Layout.astro';
+import { db } from '../../../lib/db';
+import {
+  quizzes,
+  guesses,
+  songSubmissions,
+  user as userTable,
+} from '../../../lib/db/schema';
+import { eq, sql } from 'drizzle-orm';
+import QuizResults from '../../../components/QuizResults';
+
+const { user } = Astro.locals;
+const { id } = Astro.params;
+
+// Redirect if not logged in
+if (!user) {
+  return Astro.redirect(`/login?redirect=/quiz/${id}/results`);
+}
+
+// Get quiz details
+const [quiz] = await db
+  .select()
+  .from(quizzes)
+  .where(eq(quizzes.id, parseInt(id!)))
+  .limit(1);
+
+if (!quiz) {
+  return Astro.redirect('/');
+}
+
+// Get all song submissions with submitter info
+const submissions = await db
+  .select({
+    id: songSubmissions.id,
+    songLink: songSubmissions.songLink,
+    songTitle: songSubmissions.songTitle,
+    artist: songSubmissions.artist,
+    submitterName: userTable.name,
+  })
+  .from(songSubmissions)
+  .innerJoin(userTable, eq(songSubmissions.userId, userTable.id))
+  .where(eq(songSubmissions.quizId, quiz.id));
+
+// Get leaderboard data
+const leaderboardData = await db
+  .select({
+    userId: userTable.id,
+    userName: userTable.name,
+    correctGuesses: sql<number>`count(*) filter (where ${guesses.isCorrect} = 1)`,
+    totalGuesses: sql<number>`count(*)`,
+  })
+  .from(guesses)
+  .innerJoin(userTable, eq(guesses.guesserId, userTable.id))
+  .where(eq(guesses.quizId, quiz.id))
+  .groupBy(userTable.id)
+  .orderBy(sql`count(*) filter (where ${guesses.isCorrect} = 1) DESC`);
+---
+
+<Layout>
+  <div class="container">
+    <div class="header">
+      <a href={`/quiz/${id}`} class="back-link">← Tillbaka till quizet</a>
+      <h1>Resultat</h1>
+      <h2>{quiz.name}</h2>
+    </div>
+
+    <div class="actions">
+      <a href={`/quiz/${id}/present`} class="btn-primary">
+        🎬 Starta presentationsläge
+      </a>
+    </div>
+
+    <div class="results-container">
+      <QuizResults
+        client:load
+        quizId={quiz.id}
+        songs={submissions}
+        leaderboard={leaderboardData}
+      />
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .header {
+    margin-bottom: 2rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    color: #6b7280;
+    text-decoration: none;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    transition: color 0.2s;
+  }
+
+  .back-link:hover {
+    color: #1f2937;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: #1f2937;
+    margin: 0 0 0.5rem 0;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+    color: #6b7280;
+    margin: 0;
+    font-weight: 400;
+  }
+
+  .actions {
+    margin-bottom: 2rem;
+    display: flex;
+    justify-content: center;
+  }
+
+  .btn-primary {
+    background-color: #0070f3;
+    color: white;
+    padding: 1rem 2rem;
+    border-radius: 0.5rem;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.125rem;
+    transition: all 0.2s;
+    display: inline-block;
+  }
+
+  .btn-primary:hover {
+    background-color: #0051cc;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 112, 243, 0.3);
+  }
+
+  .results-container {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 2rem;
+  }
+
+  @media (max-width: 768px) {
+    .container {
+      padding: 1rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    .results-container {
+      padding: 1rem;
+    }
+  }
+</style>
