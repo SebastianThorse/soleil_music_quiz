@@ -15,11 +15,13 @@ All commands are run from the root of the project, from a terminal:
 
 # For local development .env
 
-ASTRO_DB_REMOTE_URL=your-database-url-here
-ASTRO_DB_APP_TOKEN=your-app-token-here
-TURSO_DATABASE_URL=bla
-TURSO_AUTH_TOKEN=bla..
-BETTER_AUTH_URL=http://localhost:4321
+ASTRO_DB_REMOTE_URL=your-database-url-here\
+ASTRO_DB_APP_TOKEN=your-app-token-here\
+TURSO_DATABASE_URL=bla\
+TURSO_AUTH_TOKEN=bla..\
+BETTER_AUTH_URL=http://localhost:4321\
+
+Jag har en lista på alla prod env om man vill labba localt med riktig data etc
 
 # Get URL
 
