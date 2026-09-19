@@ -26,6 +26,11 @@ interface LeaderboardEntry {
   totalGuesses: number;
 }
 
+interface LeaderboardGroup {
+  rank: number;
+  entries: LeaderboardEntry[];
+}
+
 interface Props {
   quizName: string;
   submissions: Submission[];
@@ -39,6 +44,34 @@ const getSpotifyTrackId = (link: string): string | null => {
   } catch {
     return null;
   }
+};
+
+// Groups tied scores into shared placements (competition ranking: 1, 2, 2, 4, ...)
+const buildLeaderboardGroups = (
+  entries: LeaderboardEntry[],
+): LeaderboardGroup[] => {
+  const sorted = [...entries].sort(
+    (a, b) => b.correctGuesses - a.correctGuesses,
+  );
+  const groups: LeaderboardGroup[] = [];
+
+  sorted.forEach((entry, index) => {
+    const previousGroup = groups[groups.length - 1];
+    if (previousGroup && previousGroup.entries[0].correctGuesses === entry.correctGuesses) {
+      previousGroup.entries.push(entry);
+    } else {
+      groups.push({ rank: index + 1, entries: [entry] });
+    }
+  });
+
+  return groups;
+};
+
+const getMedal = (rank: number): string => {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return '';
 };
 
 // Quiz names can arrive as UTF-8 bytes decoded as Latin-1 (for example, "Ã¶").
@@ -62,6 +95,7 @@ export default function QuizPresentation({
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [revealedSongs, setRevealedSongs] = useState<Set<number>>(new Set());
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [revealedMedalCount, setRevealedMedalCount] = useState(0);
 
   const startPresentation = () => {
     setCurrentScreen('song');
@@ -70,6 +104,10 @@ export default function QuizPresentation({
 
   const revealAnswer = () => {
     setRevealedSongs((prev) => new Set(prev).add(currentSongIndex));
+  };
+
+  const revealNextMedal = () => {
+    setRevealedMedalCount((prev) => prev + 1);
   };
 
   const nextSong = () => {
@@ -89,8 +127,13 @@ export default function QuizPresentation({
     ? getSpotifyTrackId(currentSubmission.songLink)
     : null;
 
-  // Reverse leaderboard for last-to-first reveal
-  const reversedLeaderboard = [...leaderboard].reverse();
+  // Groups with the same score share a placement (e.g. joint 8th place).
+  // Sorted worst-to-best so medals can be revealed one at a time, gold last.
+  const leaderboardGroups = [...buildLeaderboardGroups(leaderboard)].reverse();
+  const nonMedalGroups = leaderboardGroups.filter((group) => group.rank > 3);
+  const medalGroups = leaderboardGroups.filter((group) => group.rank <= 3);
+  const visibleMedalGroups = medalGroups.slice(0, revealedMedalCount);
+  const allMedalsRevealed = revealedMedalCount >= medalGroups.length;
 
   return (
     <div className="presentation-container">
@@ -222,43 +265,86 @@ export default function QuizPresentation({
         <div className="screen active results-screen">
           <div className="results-content">
             <h1>Slutresultat</h1>
-            <h2>{quizName}</h2>
+            <h2>{displayQuizName}</h2>
 
             <div className="leaderboard">
-              {reversedLeaderboard.map((entry, index) => {
-                const placement = leaderboard.length - index;
-                const medal =
-                  placement === 1
-                    ? '🥇'
-                    : placement === 2
-                      ? '🥈'
-                      : placement === 3
-                        ? '🥉'
-                        : '';
-
-                return (
-                  <div
-                    key={entry.userId}
-                    className={`leaderboard-entry ${showLeaderboard ? 'reveal' : 'hidden'}`}
-                    style={{ animationDelay: `${index * 0.5}s` }}
-                  >
-                    <div className="placement">{medal || `#${placement}`}</div>
-                    <div className="player-name">{entry.userName}</div>
-                    <div className="score">
-                      <span className="correct">{entry.correctGuesses}</span>
-                      <span className="total">/ {entry.totalGuesses}</span>
-                    </div>
+              {nonMedalGroups.map((group) => (
+                <div
+                  key={group.rank}
+                  className={`leaderboard-entry ${showLeaderboard ? 'reveal' : 'hidden'}`}
+                >
+                  <div className="placement">
+                    #{group.rank}
+                    {group.entries.length > 1 && (
+                      <span className="shared-badge">delad</span>
+                    )}
                   </div>
-                );
-              })}
+                  <div className="player-names">
+                    {group.entries.map((entry) => (
+                      <div key={entry.userId} className="player-name">
+                        {entry.userName}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="score">
+                    <span className="correct">
+                      {group.entries[0].correctGuesses}
+                    </span>
+                    <span className="total">
+                      / {group.entries[0].totalGuesses}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {visibleMedalGroups.map((group, groupIndex) => (
+                <div
+                  key={group.rank}
+                  className="leaderboard-entry reveal medal-reveal"
+                  style={{ animationDelay: `${groupIndex * 0.2}s` }}
+                >
+                  <div className="placement">
+                    {getMedal(group.rank)}
+                    {group.entries.length > 1 && (
+                      <span className="shared-badge">delad</span>
+                    )}
+                  </div>
+                  <div className="player-names">
+                    {group.entries.map((entry) => (
+                      <div key={entry.userId} className="player-name">
+                        {entry.userName}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="score">
+                    <span className="correct">
+                      {group.entries[0].correctGuesses}
+                    </span>
+                    <span className="total">
+                      / {group.entries[0].totalGuesses}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <a
-              href={`/quiz/${submissions[0]?.id}`}
-              className="btn-primary btn-large"
-            >
-              Tillbaka till quizet
-            </a>
+            {showLeaderboard && !allMedalsRevealed && (
+              <button
+                onClick={revealNextMedal}
+                className="btn-primary btn-large"
+              >
+                Visa nästa placering →
+              </button>
+            )}
+
+            {allMedalsRevealed && (
+              <a
+                href={`/quiz/${submissions[0]?.id}`}
+                className="btn-primary btn-large"
+              >
+                Tillbaka till quizet
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -574,6 +660,10 @@ export default function QuizPresentation({
           transform: translateX(-50px);
         }
 
+        .leaderboard-entry:last-child {
+          margin-bottom: 0;
+        }
+
         .leaderboard-entry.reveal {
           animation: slideIn 0.5s ease-out forwards;
         }
@@ -582,11 +672,32 @@ export default function QuizPresentation({
           opacity: 0;
         }
 
+        .leaderboard-entry.medal-reveal {
+          animation: slideIn 0.5s ease-out forwards;
+        }
+
         @keyframes slideIn {
           to {
             opacity: 1;
             transform: translateX(0);
           }
+        }
+
+        .player-names {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+          flex: 1;
+        }
+
+        .shared-badge {
+          display: block;
+          font-size: 0.75rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: #6b7280;
+          margin-top: 0.25rem;
         }
 
         .placement {
