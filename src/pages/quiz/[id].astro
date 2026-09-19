@@ -7,6 +7,7 @@ import {
   songSubmissions,
   quizParticipants,
   quizAdmins,
+  guesses,
   user as userTable,
 } from '../../lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
@@ -96,6 +97,12 @@ const participants = await db
     (participant) => !submissions.some((submission) => submission.userName === participant.name)
   );
 
+// Count how many participants have made at least one guess
+const [votedCount] = await db
+  .select({ count: sql<number>`count(distinct ${guesses.guesserId})` })
+  .from(guesses)
+  .where(eq(guesses.quizId, quiz.id));
+
 let error = '';
 let success = '';
 
@@ -152,13 +159,20 @@ if (Astro.request.method === 'POST') {
         newStatus &&
         ['open', 'guessing', 'completed'].includes(newStatus)
       ) {
-        await db
-          .update(quizzes)
-          .set({
-            status: newStatus as 'open' | 'guessing' | 'completed',
-            closedAt: newStatus !== 'open' ? new Date() : null,
-          })
-          .where(eq(quizzes.id, quiz.id));
+        await db.transaction(async (tx) => {
+          // Going back to submissions invalidates any guesses already made
+          if (newStatus === 'open') {
+            await tx.delete(guesses).where(eq(guesses.quizId, quiz.id));
+          }
+
+          await tx
+            .update(quizzes)
+            .set({
+              status: newStatus as 'open' | 'guessing' | 'completed',
+              closedAt: newStatus !== 'open' ? new Date() : null,
+            })
+            .where(eq(quizzes.id, quiz.id));
+        });
 
         return Astro.redirect(`/quiz/${id}`);
       }
@@ -416,16 +430,12 @@ const getStatusColor = (status: string) => {
           {isAdmin && (
             <div class="admin-section">
               <h3>Administratör</h3>
-              <form method="POST" style="display: flex; gap: 1rem;">
+              <p class="info-text">
+                {votedCount.count} av {participantCount.count} deltagare har
+                gissat hittills.
+              </p>
+              <form method="POST" class="admin-action-row">
                 <input type="hidden" name="action" value="change_status" />
-                <button
-                  type="submit"
-                  name="new_status"
-                  value="open"
-                  class="btn-secondary"
-                >
-                  ← Återgå till inlämning
-                </button>
                 <button
                   type="submit"
                   name="new_status"
@@ -433,6 +443,26 @@ const getStatusColor = (status: string) => {
                   class="btn-warning"
                 >
                   Avsluta quiz
+                </button>
+              </form>
+
+              <p class="warning-text">
+                Varning: Återställning till öppet läge kommer att radera alla
+                gissningar som har gjorts.
+              </p>
+              <form
+                method="POST"
+                class="admin-action-row"
+                onsubmit="return confirm('Är du säker? Detta kommer att radera alla gissningar och öppna quizet för nya låtinlämningar.');"
+              >
+                <input type="hidden" name="action" value="change_status" />
+                <button
+                  type="submit"
+                  name="new_status"
+                  value="open"
+                  class="btn-danger"
+                >
+                  Återställ till öppet läge och radera alla gissningar
                 </button>
               </form>
             </div>
@@ -681,6 +711,22 @@ const getStatusColor = (status: string) => {
     margin: 0 0 1rem 0;
   }
 
+  .admin-section .info-text {
+    text-align: left;
+    font-size: 0.875rem;
+    margin: 0 0 1rem 0;
+  }
+
+  .admin-action-row {
+    margin-bottom: 1.5rem;
+  }
+
+  .warning-text {
+    color: #991b1b;
+    margin: 0 0 1.5rem 0;
+    font-weight: 500;
+  }
+
   .submissions-list {
     margin-top: 2rem;
   }
@@ -776,7 +822,8 @@ const getStatusColor = (status: string) => {
 
   .btn-primary,
   .btn-secondary,
-  .btn-warning {
+  .btn-warning,
+  .btn-danger {
     padding: 0.75rem 1.5rem;
     border-radius: 0.5rem;
     font-weight: 600;
@@ -814,6 +861,15 @@ const getStatusColor = (status: string) => {
 
   .btn-warning:hover {
     background-color: #d97706;
+  }
+
+  .btn-danger {
+    background-color: #ef4444;
+    color: white;
+  }
+
+  .btn-danger:hover {
+    background-color: #dc2626;
   }
 
   .btn-large {
