@@ -117,10 +117,6 @@ export default function QuizPresentation({
       {currentScreen === 'song' && currentSubmission && (
         <div className="screen active song-screen">
           <div className="song-content">
-            <div className="song-number">
-              Låt {currentSongIndex + 1} av {submissions.length}
-            </div>
-
             <div className="song-info">
               {currentSubmission.songTitle && (
                 <h2 className="song-title">{currentSubmission.songTitle}</h2>
@@ -132,26 +128,33 @@ export default function QuizPresentation({
 
             {/* Spotify Embed */}
             {spotifyId && (
-              <div className="spotify-embed">
-                <iframe
-                  style={{ borderRadius: '12px' }}
-                  src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator`}
-                  width="100%"
-                  height="152"
-                  frameBorder="0"
-                  allowFullScreen
-                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                  loading="lazy"
-                ></iframe>
+              <div className="spotify-embed-row">
+                <div className="spotify-embed">
+                  <iframe
+                    style={{ borderRadius: '12px' }}
+                    src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator`}
+                    width="100%"
+                    height="152"
+                    frameBorder="0"
+                    allowFullScreen
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    loading="lazy"
+                  ></iframe>
+                </div>
+                <div className="song-number">
+                  Låt {currentSongIndex + 1} av {submissions.length}
+                </div>
               </div>
             )}
-
-            <h3 className="guesses-title">Vem tror ni skickade in denna?</h3>
 
             {/* Guess Visualization */}
             <div className="guess-grid">
               {currentSubmission.guessDistribution
                 .sort((a, b) => b.guessCount - a.guessCount) // Sort by most guesses first
+                // Always show the correct submitter once revealed, even with 0 guesses
+                .filter(
+                  (guess) => guess.guessCount > 0 || (guess.isCorrect && isRevealed),
+                )
                 .map((guess) => {
                   const maxGuesses = Math.max(
                     ...currentSubmission.guessDistribution.map(
@@ -173,11 +176,10 @@ export default function QuizPresentation({
                       }`}
                       style={{ fontSize: `${fontSize}rem` }}
                     >
-                      <div className="guess-name">{guess.participantName}</div>
                       <div className="guess-count">
-                        {guess.guessCount}{' '}
-                        {guess.guessCount === 1 ? 'gissning' : 'gissningar'}
+                        {guess.guessCount}
                       </div>
+                      <div className="guess-name">{guess.participantName}</div>
 
                       {/* Tooltip - only show if there are guessers */}
                       {guess.guessers.length > 0 && (
@@ -326,10 +328,10 @@ export default function QuizPresentation({
 
         .song-number {
           color: white;
-          opacity: 0.8;
-          font-size: 1rem;
-          margin-bottom: 1rem;
-          text-align: center;
+          opacity: 0.9;
+          font-size: 2rem;
+          font-weight: 700;
+          white-space: nowrap;
         }
 
         .song-info {
@@ -349,9 +351,17 @@ export default function QuizPresentation({
           margin: 0;
         }
 
+        .spotify-embed-row {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 2rem;
+          margin-bottom: 3rem;
+        }
+
         .spotify-embed {
           max-width: 500px;
-          margin: 0 auto 3rem auto;
+          width: 100%;
         }
 
         .guesses-title {
@@ -374,7 +384,6 @@ export default function QuizPresentation({
         .guess-box {
           background: rgba(255, 255, 255, 0.95);
           border-radius: 1rem;
-          padding: 2rem 1rem;
           text-align: center;
           transition: all 0.3s;
           cursor: pointer;
@@ -382,7 +391,6 @@ export default function QuizPresentation({
           min-height: 120px;
           display: flex;
           flex-direction: column;
-          justify-content: center;
           align-items: center;
         }
 
@@ -392,7 +400,7 @@ export default function QuizPresentation({
         }
 
         .guess-box.correct-answer {
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          background-color: #059669;
           color: white;
         }
 
@@ -420,22 +428,30 @@ export default function QuizPresentation({
 
         .guess-name {
           font-weight: 700;
+          font-size: 2rem;
           margin-bottom: 0.5rem;
+          margin-top: 0.5rem;
         }
 
         .guess-count {
-          font-size: 0.875rem;
-          opacity: 0.7;
+          font-size: 3rem;
+          font-weight: 700;
+          opacity: 0.8;
+          width: 100%;
+          border-bottom: 2px solid black;
+          border-radius: 1rem 1rem 0 0;
+          background-color: #C8A2C8; /* lilac */
         }
 
         .guess-box.correct-answer .guess-count {
           opacity: 1;
           font-weight: 600;
+          background-color: #059669;
         }
 
         .guess-box.correct-answer .guess-count::before {
           content: "✓ ";
-          font-size: 1.2rem;
+          font-size: 3rem;
         }
 
         /* Tooltip */
@@ -463,12 +479,15 @@ export default function QuizPresentation({
 
         .tooltip-title {
           font-weight: 600;
+          font-size: 1.5rem;
+          opacity: 0.8;
           margin-bottom: 0.5rem;
           border-bottom: 1px solid rgba(255, 255, 255, 0.3);
           padding-bottom: 0.25rem;
         }
 
         .tooltip-name {
+          font-size: 2rem;
           padding: 0.25rem 0;
         }
 
@@ -602,6 +621,15 @@ export default function QuizPresentation({
           .guess-grid {
             grid-template-columns: repeat(2, 1fr);
             gap: 1rem;
+          }
+
+          .spotify-embed-row {
+            flex-direction: column;
+            gap: 1rem;
+          }
+
+          .song-number {
+            font-size: 1.5rem;
           }
 
           .song-title {
