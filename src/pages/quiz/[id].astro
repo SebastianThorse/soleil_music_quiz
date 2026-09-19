@@ -82,6 +82,20 @@ const [participantCount] = await db
   .from(quizParticipants)
   .where(eq(quizParticipants.quizId, quiz.id));
 
+const participants = await db
+  .select({
+    id: userTable.id,
+    name: userTable.name,
+    email: userTable.email,
+  })
+  .from(quizParticipants)
+  .innerJoin(userTable, eq(quizParticipants.userId, userTable.id))
+  .where(eq(quizParticipants.quizId, quiz.id));
+
+  const participantsWithoutSongSubmissions = participants.filter(
+    (participant) => !submissions.some((submission) => submission.userName === participant.name)
+  );
+
 let error = '';
 let success = '';
 
@@ -353,6 +367,18 @@ const getStatusColor = (status: string) => {
                   </div>
                 ))}
               </div>
+              {participantsWithoutSongSubmissions.length > 0 && (
+                <div class="no-submission">
+                  <p>
+                    Följande deltagare har ännu inte skickat in sina låtar:
+                  </p>
+                  <ul>
+                    {participantsWithoutSongSubmissions.map((participant) => (
+                      <li>{participant.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -681,7 +707,7 @@ const getStatusColor = (status: string) => {
   .submitter {
     font-weight: 600;
     color: #1f2937;
-    margin: 0 0 0.5rem 0;
+    margin: 0;
   }
 
   .song-info {
