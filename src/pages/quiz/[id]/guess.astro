@@ -316,6 +316,7 @@ const getSpotifyTrackId = (link: string): string | null => {
                     {participants.map((participant) => (
                       <option
                         value={participant.id}
+                        data-name={participant.name}
                         selected={existingGuess === participant.id}
                       >
                         {participant.name}
@@ -361,6 +362,42 @@ const getSpotifyTrackId = (link: string): string | null => {
     }
   </div>
 </Layout>
+
+<script>
+  // Tracks the guesses currently selected in the form (not yet saved) so we
+  // can warn the user when the same participant is picked more than once.
+  const selects = Array.from(
+    document.querySelectorAll<HTMLSelectElement>('.guess-select'),
+  );
+
+  function updateSelectionCounts() {
+    const currentSelections = new Map<string, string>();
+    for (const select of selects) {
+      if (select.value) currentSelections.set(select.name, select.value);
+    }
+
+    const counts = new Map<string, number>();
+    for (const guessedUserId of currentSelections.values()) {
+      counts.set(guessedUserId, (counts.get(guessedUserId) ?? 0) + 1);
+    }
+
+    for (const select of selects) {
+      for (const option of Array.from(select.options)) {
+        if (!option.value) continue;
+        const baseName = option.dataset.name ?? option.textContent ?? '';
+        const count = counts.get(option.value) ?? 0;
+        // option.textContent = count > 1 ? `${baseName} (vald ${count} ggr)` : baseName;
+        option.textContent = baseName + ` - (${count} ggr)`;
+      }
+    }
+  }
+
+  for (const select of selects) {
+    select.addEventListener('change', updateSelectionCounts);
+  }
+
+  updateSelectionCounts();
+</script>
 
 <style>
   .container {
