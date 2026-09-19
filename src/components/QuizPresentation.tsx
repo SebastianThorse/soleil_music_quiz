@@ -41,6 +41,16 @@ const getSpotifyTrackId = (link: string): string | null => {
   }
 };
 
+// Quiz names can arrive as UTF-8 bytes decoded as Latin-1 (for example, "Ã¶").
+const getDisplayQuizName = (name: string): string => {
+  try {
+    const bytes = Uint8Array.from(name, (character) => character.charCodeAt(0));
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return name;
+  }
+};
+
 export default function QuizPresentation({
   quizName,
   submissions,
@@ -74,6 +84,7 @@ export default function QuizPresentation({
 
   const currentSubmission = submissions[currentSongIndex];
   const isRevealed = revealedSongs.has(currentSongIndex);
+  const displayQuizName = getDisplayQuizName(quizName);
   const spotifyId = currentSubmission
     ? getSpotifyTrackId(currentSubmission.songLink)
     : null;
@@ -87,7 +98,7 @@ export default function QuizPresentation({
       {currentScreen === 'start' && (
         <div className="screen active">
           <div className="start-content">
-            <h1>{quizName}</h1>
+            <h1>{displayQuizName}</h1>
             <h2>Presentationsläge</h2>
             <p className="subtitle">
               Gå igenom varje låt och se vem som gissade vad
