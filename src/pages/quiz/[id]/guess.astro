@@ -55,10 +55,6 @@ const [isParticipant] = await db
   )
   .limit(1);
 
-if (!isParticipant) {
-  return Astro.redirect(`/quiz/${id}`);
-}
-
 // Get all submissions (without revealing who submitted)
 const submissions = await db
   .select({
@@ -71,14 +67,21 @@ const submissions = await db
   .from(songSubmissions)
   .where(eq(songSubmissions.quizId, quiz.id));
 
-// Get all participants for the dropdown
+// Get all participants that have submitted a song for the dropdown
 const participants = await db
-  .select({
+  .selectDistinct({
     id: userTable.id,
     name: userTable.name,
   })
   .from(quizParticipants)
   .innerJoin(userTable, eq(quizParticipants.userId, userTable.id))
+  .innerJoin(
+    songSubmissions,
+    and(
+      eq(songSubmissions.userId, quizParticipants.userId),
+      eq(songSubmissions.quizId, quiz.id),
+    ),
+  )
   .where(eq(quizParticipants.quizId, quiz.id));
 
 // Get user's existing guesses
@@ -104,54 +107,71 @@ if (Astro.request.method === 'POST') {
     const formData = await Astro.request.formData();
     const action = formData.get('action')?.toString();
 
-    if (action === 'submit_guesses') {
-      // Get all guesses from form
-      const newGuesses: { songSubmissionId: number; guessedUserId: string }[] =
-        [];
-
-      for (const submission of submissions) {
-        const guessedUserId = formData
-          .get(`guess_${submission.id}`)
-          ?.toString();
-        if (guessedUserId) {
-          newGuesses.push({
-            songSubmissionId: submission.id,
-            guessedUserId,
-          });
-        }
+    if (action === 'join') {
+      if (!isParticipant) {
+        await db.insert(quizParticipants).values({
+          quizId: quiz.id,
+          userId: user.id,
+        });
       }
-
-      if (newGuesses.length === 0) {
-        error = 'Du måste gissa på minst en låt';
+      return Astro.redirect(`/quiz/${id}/guess`);
+    } else if (action === 'submit_guesses') {
+      if (!isParticipant) {
+        error = 'Du måste gå med i quizet först';
       } else {
-        // Delete existing guesses and insert new ones in a transaction
-        await db.transaction(async (tx) => {
-          // Delete existing guesses for this user in this quiz
-          await tx
-            .delete(guesses)
-            .where(
-              and(eq(guesses.quizId, quiz.id), eq(guesses.guesserId, user.id)),
-            );
+        // Get all guesses from form
+        const newGuesses: {
+          songSubmissionId: number;
+          guessedUserId: string;
+        }[] = [];
 
-          // Insert new guesses with correctness check
-          for (const guess of newGuesses) {
-            const submission = submissions.find(
-              (s) => s.id === guess.songSubmissionId,
-            );
-            const isCorrect = submission?.userId === guess.guessedUserId;
-
-            await tx.insert(guesses).values({
-              quizId: quiz.id,
-              guesserId: user.id,
-              songSubmissionId: guess.songSubmissionId,
-              guessedUserId: guess.guessedUserId,
-              isCorrect: isCorrect,
+        for (const submission of submissions) {
+          const guessedUserId = formData
+            .get(`guess_${submission.id}`)
+            ?.toString();
+          if (guessedUserId) {
+            newGuesses.push({
+              songSubmissionId: submission.id,
+              guessedUserId,
             });
           }
-        });
+        }
 
-        success = `Dina gissningar har sparats! (${newGuesses.length} av ${submissions.length} låtar)`;
-        return Astro.redirect(`/quiz/${id}/guess`);
+        if (newGuesses.length === 0) {
+          error = 'Du måste gissa på minst en låt';
+        } else {
+          // Delete existing guesses and insert new ones in a transaction
+          await db.transaction(async (tx) => {
+            // Delete existing guesses for this user in this quiz
+            await tx
+              .delete(guesses)
+              .where(
+                and(
+                  eq(guesses.quizId, quiz.id),
+                  eq(guesses.guesserId, user.id),
+                ),
+              );
+
+            // Insert new guesses with correctness check
+            for (const guess of newGuesses) {
+              const submission = submissions.find(
+                (s) => s.id === guess.songSubmissionId,
+              );
+              const isCorrect = submission?.userId === guess.guessedUserId;
+
+              await tx.insert(guesses).values({
+                quizId: quiz.id,
+                guesserId: user.id,
+                songSubmissionId: guess.songSubmissionId,
+                guessedUserId: guess.guessedUserId,
+                isCorrect: isCorrect,
+              });
+            }
+          });
+
+          success = `Dina gissningar har sparats! (${newGuesses.length} av ${submissions.length} låtar)`;
+          return Astro.redirect(`/quiz/${id}/guess`);
+        }
       }
     } else if (action === 'reset_to_open' && isAdmin) {
       // Admin action: Delete all guesses and change status back to open
@@ -218,6 +238,25 @@ const getSpotifyTrackId = (link: string): string | null => {
       </p>
     </div>
 
+    {
+      !isParticipant && (
+        <div class="join-card">
+          <p>
+            Du hann inte gå med innan gissningsfasen startade, men du kan
+            fortfarande gå med och gissa!
+          </p>
+          <form method="POST">
+            <input type="hidden" name="action" value="join" />
+            <button type="submit" class="btn-primary">
+              Gå med i quizet
+            </button>
+          </form>
+        </div>
+      )
+    }
+
+    {
+      isParticipant && (
     <form method="POST" class="guessing-form">
       <input type="hidden" name="action" value="submit_guesses" />
 
@@ -296,6 +335,8 @@ const getSpotifyTrackId = (link: string): string | null => {
         </button>
       </div>
     </form>
+      )
+    }
 
     {/* Admin controls */}
     {
@@ -369,6 +410,20 @@ const getSpotifyTrackId = (link: string): string | null => {
     margin: 0;
     color: #1e40af;
     font-size: 0.875rem;
+  }
+
+  .join-card {
+    padding: 1.5rem;
+    background: #f9fafb;
+    border-radius: 0.5rem;
+    border: 2px solid #e5e7eb;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+
+  .join-card p {
+    margin: 0 0 1rem 0;
+    color: #374151;
   }
 
   .error-message,
