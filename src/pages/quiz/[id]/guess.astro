@@ -232,7 +232,11 @@ const getSpotifyTrackId = (link: string): string | null => {
 
     {error && <div class="error-message">{error}</div>}
 
-    {success && <div class="success-message">{success}</div>}
+    {success && (
+      <div class="success-message" id="success-message">
+        {success}
+      </div>
+    )}
 
     <div class="info-box">
       <p>
@@ -438,6 +442,19 @@ const getSpotifyTrackId = (link: string): string | null => {
     event.preventDefault();
     event.returnValue = '';
   });
+
+  // Auto-dismiss the "saved" confirmation and drop ?saved=1 from the URL.
+  const successMessage = document.getElementById('success-message');
+  if (successMessage) {
+    setTimeout(() => {
+      successMessage.classList.add('fade-out');
+      setTimeout(() => successMessage.remove(), 500);
+    }, 3000);
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('saved');
+    window.history.replaceState({}, '', url);
+  }
 </script>
 
 <style>
@@ -522,6 +539,11 @@ const getSpotifyTrackId = (link: string): string | null => {
     background-color: #d1fae5;
     border: 1px solid #6ee7b7;
     color: #065f46;
+    transition: opacity 0.5s ease;
+  }
+
+  .success-message.fade-out {
+    opacity: 0;
   }
 
   .guessing-form {
