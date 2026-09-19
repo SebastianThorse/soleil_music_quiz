@@ -99,7 +99,10 @@ const guessMap = new Map(
 );
 
 let error = '';
-let success = '';
+let success =
+  Astro.url.searchParams.get('saved') === '1'
+    ? 'Dina gissningar har sparats!'
+    : '';
 
 // Handle POST requests
 if (Astro.request.method === 'POST') {
@@ -170,7 +173,7 @@ if (Astro.request.method === 'POST') {
           });
 
           success = `Dina gissningar har sparats! (${newGuesses.length} av ${submissions.length} låtar)`;
-          return Astro.redirect(`/quiz/${id}/guess`);
+          return Astro.redirect(`/quiz/${id}/guess?saved=1`);
         }
       }
     } else if (action === 'reset_to_open' && isAdmin) {
@@ -331,6 +334,9 @@ const getSpotifyTrackId = (link: string): string | null => {
       </div>
 
       <div class="form-actions">
+        <p id="unsaved-indicator" class="unsaved-indicator" hidden>
+          ⚠️ Du har osparade ändringar
+        </p>
         <button type="submit" class="btn-primary btn-large">
           Spara gissningar
         </button>
@@ -397,6 +403,41 @@ const getSpotifyTrackId = (link: string): string | null => {
   }
 
   updateSelectionCounts();
+
+  // Warn the user when they have unsaved guess changes.
+  const initialValues = new Map(selects.map((select) => [select.name, select.value]));
+  const unsavedIndicator = document.getElementById('unsaved-indicator');
+  const guessingForm = document.querySelector<HTMLFormElement>('.guessing-form');
+  let hasUnsavedChanges = false;
+
+  function updateUnsavedState() {
+    hasUnsavedChanges = selects.some(
+      (select) => select.value !== initialValues.get(select.name),
+    );
+    unsavedIndicator?.toggleAttribute('hidden', !hasUnsavedChanges);
+  }
+
+  for (const select of selects) {
+    select.addEventListener('change', updateUnsavedState);
+  }
+
+  guessingForm?.addEventListener('submit', () => {
+    hasUnsavedChanges = false;
+
+    // Give immediate feedback while the page reloads with the save confirmation.
+    const submitButton =
+      guessingForm.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = 'Sparar...';
+    }
+  });
+
+  window.addEventListener('beforeunload', (event) => {
+    if (!hasUnsavedChanges) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 </script>
 
 <style>
@@ -587,6 +628,17 @@ const getSpotifyTrackId = (link: string): string | null => {
     border: 2px solid #0070f3;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
     text-align: center;
+  }
+
+  .unsaved-indicator {
+    margin: 0 0 1rem 0;
+    color: #92400e;
+    background-color: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 
   .btn-primary,
