@@ -5,7 +5,7 @@ import * as schema from './schema';
 
 // Create the Turso client
 const client = createClient({
-  url: process.env.TURSO_DATABASE_URL!,
+  url: process.env.TURSO_DATABASE_URL! || 'file:.astro/content.db',
   authToken: process.env.TURSO_AUTH_TOKEN!,
 });
 
