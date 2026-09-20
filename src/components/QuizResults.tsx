@@ -7,6 +7,7 @@ interface Song {
   songTitle: string | null;
   artist: string | null;
   submitterName: string;
+  ownGuess: { guessedUserName: string; isCorrect: boolean | null } | null;
 }
 
 interface LeaderboardEntry {
@@ -14,6 +15,11 @@ interface LeaderboardEntry {
   userName: string;
   correctGuesses: number;
   totalGuesses: number;
+}
+
+interface LeaderboardGroup {
+  rank: number;
+  entries: LeaderboardEntry[];
 }
 
 interface Props {
@@ -29,6 +35,37 @@ const getSpotifyTrackId = (link: string): string | null => {
   } catch {
     return null;
   }
+};
+
+// Groups tied scores into shared placements (competition ranking: 1, 2, 2, 4, ...)
+const buildLeaderboardGroups = (
+  entries: LeaderboardEntry[],
+): LeaderboardGroup[] => {
+  const sorted = [...entries].sort(
+    (a, b) => b.correctGuesses - a.correctGuesses,
+  );
+  const groups: LeaderboardGroup[] = [];
+
+  sorted.forEach((entry, index) => {
+    const previousGroup = groups[groups.length - 1];
+    if (
+      previousGroup &&
+      previousGroup.entries[0].correctGuesses === entry.correctGuesses
+    ) {
+      previousGroup.entries.push(entry);
+    } else {
+      groups.push({ rank: index + 1, entries: [entry] });
+    }
+  });
+
+  return groups;
+};
+
+const getMedal = (rank: number): string => {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return '';
 };
 
 export default function QuizResults({ quizId, songs, leaderboard }: Props) {
@@ -125,6 +162,14 @@ export default function QuizResults({ quizId, songs, leaderboard }: Props) {
                         Inskickad av: <span className="hidden-text">???</span>
                       </div>
                     )}
+                    {isRevealed && song.ownGuess && (
+                      <div
+                        className={`own-guess ${song.ownGuess.isCorrect ? 'correct' : 'incorrect'}`}
+                      >
+                        Din gissning: <strong>{song.ownGuess.guessedUserName}</strong>{' '}
+                        {song.ownGuess.isCorrect ? '✓ Rätt' : '✗ Fel'}
+                      </div>
+                    )}
                     {!spotifyId && (
                       <a
                         href={song.songLink}
@@ -154,30 +199,37 @@ export default function QuizResults({ quizId, songs, leaderboard }: Props) {
 
         {showLeaderboard && (
           <div className="leaderboard">
-            {leaderboard.map((entry, index) => {
-              const placement = index + 1;
-              const medal =
-                placement === 1
-                  ? '🥇'
-                  : placement === 2
-                    ? '🥈'
-                    : placement === 3
-                      ? '🥉'
-                      : '';
+            {buildLeaderboardGroups(leaderboard).map((group) => {
+              const medal = getMedal(group.rank);
+              const { correctGuesses, totalGuesses } = group.entries[0];
               const percentage =
-                entry.totalGuesses > 0
-                  ? Math.round(
-                      (entry.correctGuesses / entry.totalGuesses) * 100,
-                    )
+                totalGuesses > 0
+                  ? Math.round((correctGuesses / totalGuesses) * 100)
                   : 0;
 
               return (
-                <div key={entry.userId} className="leaderboard-entry">
-                  <div className="placement">{medal || `#${placement}`}</div>
+                <div
+                  key={group.rank}
+                  className={`leaderboard-entry ${
+                    group.rank <= 3 ? `rank-${group.rank}` : ''
+                  }`}
+                >
+                  <div className="placement">
+                    {medal || `#${group.rank}`}
+                    {group.entries.length > 1 && (
+                      <span className="shared-badge">delad</span>
+                    )}
+                  </div>
                   <div className="player-info">
-                    <div className="player-name">{entry.userName}</div>
+                    <div className="player-names">
+                      {group.entries.map((entry) => (
+                        <div key={entry.userId} className="player-name">
+                          {entry.userName}
+                        </div>
+                      ))}
+                    </div>
                     <div className="player-stats">
-                      {entry.correctGuesses} rätt av {entry.totalGuesses}{' '}
+                      {correctGuesses} rätt av {totalGuesses}{' '}
                       gissningar ({percentage}
                       %)
                     </div>
@@ -189,9 +241,9 @@ export default function QuizResults({ quizId, songs, leaderboard }: Props) {
                     ></div>
                   </div>
                   <div className="score">
-                    <span className="correct">{entry.correctGuesses}</span>
+                    <span className="correct">{correctGuesses}</span>
                     <span className="separator">/</span>
-                    <span className="total">{entry.totalGuesses}</span>
+                    <span className="total">{totalGuesses}</span>
                   </div>
                 </div>
               );
@@ -306,9 +358,10 @@ export default function QuizResults({ quizId, songs, leaderboard }: Props) {
 
         .song-footer {
           display: flex;
+          flex-wrap: wrap;
           justify-content: space-between;
           align-items: center;
-          gap: 1rem;
+          gap: 0.5rem 1rem;
           padding-top: 1rem;
           border-top: 1px solid #e5e7eb;
         }
@@ -339,6 +392,20 @@ export default function QuizResults({ quizId, songs, leaderboard }: Props) {
           font-weight: 700;
           color: #d1d5db;
           letter-spacing: 0.1em;
+        }
+
+        .own-guess {
+          font-size: 0.875rem;
+          font-weight: 600;
+          width: 100%;
+        }
+
+        .own-guess.correct {
+          color: #059669;
+        }
+
+        .own-guess.incorrect {
+          color: #dc2626;
         }
 
         .song-link {
@@ -430,17 +497,17 @@ export default function QuizResults({ quizId, songs, leaderboard }: Props) {
           transform: translateX(5px);
         }
 
-        .leaderboard-entry:nth-child(1) {
+        .leaderboard-entry.rank-1 {
           background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
           border: 2px solid #fbbf24;
         }
 
-        .leaderboard-entry:nth-child(2) {
+        .leaderboard-entry.rank-2 {
           background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
           border: 2px solid #a5b4fc;
         }
 
-        .leaderboard-entry:nth-child(3) {
+        .leaderboard-entry.rank-3 {
           background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);
           border: 2px solid #fb923c;
         }
@@ -452,10 +519,26 @@ export default function QuizResults({ quizId, songs, leaderboard }: Props) {
           color: #1f2937;
         }
 
+        .shared-badge {
+          display: block;
+          font-size: 0.7rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: #6b7280;
+          margin-top: 0.25rem;
+        }
+
         .player-info {
           display: flex;
           flex-direction: column;
           gap: 0.25rem;
+        }
+
+        .player-names {
+          display: flex;
+          flex-direction: column;
+          gap: 0.15rem;
         }
 
         .player-name {

@@ -26,6 +26,11 @@ interface LeaderboardEntry {
   totalGuesses: number;
 }
 
+interface LeaderboardGroup {
+  rank: number;
+  entries: LeaderboardEntry[];
+}
+
 interface Props {
   quizName: string;
   submissions: Submission[];
@@ -41,6 +46,44 @@ const getSpotifyTrackId = (link: string): string | null => {
   }
 };
 
+// Groups tied scores into shared placements (competition ranking: 1, 2, 2, 4, ...)
+const buildLeaderboardGroups = (
+  entries: LeaderboardEntry[],
+): LeaderboardGroup[] => {
+  const sorted = [...entries].sort(
+    (a, b) => b.correctGuesses - a.correctGuesses,
+  );
+  const groups: LeaderboardGroup[] = [];
+
+  sorted.forEach((entry, index) => {
+    const previousGroup = groups[groups.length - 1];
+    if (previousGroup && previousGroup.entries[0].correctGuesses === entry.correctGuesses) {
+      previousGroup.entries.push(entry);
+    } else {
+      groups.push({ rank: index + 1, entries: [entry] });
+    }
+  });
+
+  return groups;
+};
+
+const getMedal = (rank: number): string => {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return '';
+};
+
+// Quiz names can arrive as UTF-8 bytes decoded as Latin-1 (for example, "Ã¶").
+const getDisplayQuizName = (name: string): string => {
+  try {
+    const bytes = Uint8Array.from(name, (character) => character.charCodeAt(0));
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return name;
+  }
+};
+
 export default function QuizPresentation({
   quizName,
   submissions,
@@ -52,6 +95,7 @@ export default function QuizPresentation({
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [revealedSongs, setRevealedSongs] = useState<Set<number>>(new Set());
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [revealedMedalCount, setRevealedMedalCount] = useState(0);
 
   const startPresentation = () => {
     setCurrentScreen('song');
@@ -60,6 +104,10 @@ export default function QuizPresentation({
 
   const revealAnswer = () => {
     setRevealedSongs((prev) => new Set(prev).add(currentSongIndex));
+  };
+
+  const revealNextMedal = () => {
+    setRevealedMedalCount((prev) => prev + 1);
   };
 
   const nextSong = () => {
@@ -74,12 +122,18 @@ export default function QuizPresentation({
 
   const currentSubmission = submissions[currentSongIndex];
   const isRevealed = revealedSongs.has(currentSongIndex);
+  const displayQuizName = getDisplayQuizName(quizName);
   const spotifyId = currentSubmission
     ? getSpotifyTrackId(currentSubmission.songLink)
     : null;
 
-  // Reverse leaderboard for last-to-first reveal
-  const reversedLeaderboard = [...leaderboard].reverse();
+  // Groups with the same score share a placement (e.g. joint 8th place).
+  // Sorted worst-to-best so medals can be revealed one at a time, gold last.
+  const leaderboardGroups = [...buildLeaderboardGroups(leaderboard)].reverse();
+  const nonMedalGroups = leaderboardGroups.filter((group) => group.rank > 3);
+  const medalGroups = leaderboardGroups.filter((group) => group.rank <= 3);
+  const visibleMedalGroups = medalGroups.slice(0, revealedMedalCount);
+  const allMedalsRevealed = revealedMedalCount >= medalGroups.length;
 
   return (
     <div className="presentation-container">
@@ -87,7 +141,7 @@ export default function QuizPresentation({
       {currentScreen === 'start' && (
         <div className="screen active">
           <div className="start-content">
-            <h1>{quizName}</h1>
+            <h1>{displayQuizName}</h1>
             <h2>Presentationsläge</h2>
             <p className="subtitle">
               Gå igenom varje låt och se vem som gissade vad
@@ -106,10 +160,6 @@ export default function QuizPresentation({
       {currentScreen === 'song' && currentSubmission && (
         <div className="screen active song-screen">
           <div className="song-content">
-            <div className="song-number">
-              Låt {currentSongIndex + 1} av {submissions.length}
-            </div>
-
             <div className="song-info">
               {currentSubmission.songTitle && (
                 <h2 className="song-title">{currentSubmission.songTitle}</h2>
@@ -121,26 +171,33 @@ export default function QuizPresentation({
 
             {/* Spotify Embed */}
             {spotifyId && (
-              <div className="spotify-embed">
-                <iframe
-                  style={{ borderRadius: '12px' }}
-                  src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator`}
-                  width="100%"
-                  height="152"
-                  frameBorder="0"
-                  allowFullScreen
-                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                  loading="lazy"
-                ></iframe>
+              <div className="spotify-embed-row">
+                <div className="spotify-embed">
+                  <iframe
+                    style={{ borderRadius: '12px' }}
+                    src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator`}
+                    width="100%"
+                    height="152"
+                    frameBorder="0"
+                    allowFullScreen
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    loading="lazy"
+                  ></iframe>
+                </div>
+                <div className="song-number">
+                  Låt {currentSongIndex + 1} av {submissions.length}
+                </div>
               </div>
             )}
-
-            <h3 className="guesses-title">Vem tror ni skickade in denna?</h3>
 
             {/* Guess Visualization */}
             <div className="guess-grid">
               {currentSubmission.guessDistribution
                 .sort((a, b) => b.guessCount - a.guessCount) // Sort by most guesses first
+                // Always show the correct submitter once revealed, even with 0 guesses
+                .filter(
+                  (guess) => guess.guessCount > 0 || (guess.isCorrect && isRevealed),
+                )
                 .map((guess) => {
                   const maxGuesses = Math.max(
                     ...currentSubmission.guessDistribution.map(
@@ -162,11 +219,10 @@ export default function QuizPresentation({
                       }`}
                       style={{ fontSize: `${fontSize}rem` }}
                     >
-                      <div className="guess-name">{guess.participantName}</div>
                       <div className="guess-count">
-                        {guess.guessCount}{' '}
-                        {guess.guessCount === 1 ? 'gissning' : 'gissningar'}
+                        {guess.guessCount}
                       </div>
+                      <div className="guess-name">{guess.participantName}</div>
 
                       {/* Tooltip - only show if there are guessers */}
                       {guess.guessers.length > 0 && (
@@ -209,43 +265,86 @@ export default function QuizPresentation({
         <div className="screen active results-screen">
           <div className="results-content">
             <h1>Slutresultat</h1>
-            <h2>{quizName}</h2>
+            <h2>{displayQuizName}</h2>
 
             <div className="leaderboard">
-              {reversedLeaderboard.map((entry, index) => {
-                const placement = leaderboard.length - index;
-                const medal =
-                  placement === 1
-                    ? '🥇'
-                    : placement === 2
-                      ? '🥈'
-                      : placement === 3
-                        ? '🥉'
-                        : '';
-
-                return (
-                  <div
-                    key={entry.userId}
-                    className={`leaderboard-entry ${showLeaderboard ? 'reveal' : 'hidden'}`}
-                    style={{ animationDelay: `${index * 0.5}s` }}
-                  >
-                    <div className="placement">{medal || `#${placement}`}</div>
-                    <div className="player-name">{entry.userName}</div>
-                    <div className="score">
-                      <span className="correct">{entry.correctGuesses}</span>
-                      <span className="total">/ {entry.totalGuesses}</span>
-                    </div>
+              {nonMedalGroups.map((group) => (
+                <div
+                  key={group.rank}
+                  className={`leaderboard-entry ${showLeaderboard ? 'reveal' : 'hidden'}`}
+                >
+                  <div className="placement">
+                    #{group.rank}
+                    {group.entries.length > 1 && (
+                      <span className="shared-badge">delad</span>
+                    )}
                   </div>
-                );
-              })}
+                  <div className="player-names">
+                    {group.entries.map((entry) => (
+                      <div key={entry.userId} className="player-name">
+                        {entry.userName}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="score">
+                    <span className="correct">
+                      {group.entries[0].correctGuesses}
+                    </span>
+                    <span className="total">
+                      / {group.entries[0].totalGuesses}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {visibleMedalGroups.map((group, groupIndex) => (
+                <div
+                  key={group.rank}
+                  className="leaderboard-entry reveal medal-reveal"
+                  style={{ animationDelay: `${groupIndex * 0.2}s` }}
+                >
+                  <div className="placement">
+                    {getMedal(group.rank)}
+                    {group.entries.length > 1 && (
+                      <span className="shared-badge">delad</span>
+                    )}
+                  </div>
+                  <div className="player-names">
+                    {group.entries.map((entry) => (
+                      <div key={entry.userId} className="player-name">
+                        {entry.userName}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="score">
+                    <span className="correct">
+                      {group.entries[0].correctGuesses}
+                    </span>
+                    <span className="total">
+                      / {group.entries[0].totalGuesses}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <a
-              href={`/quiz/${submissions[0]?.id}`}
-              className="btn-primary btn-large"
-            >
-              Tillbaka till quizet
-            </a>
+            {showLeaderboard && !allMedalsRevealed && (
+              <button
+                onClick={revealNextMedal}
+                className="btn-primary btn-large"
+              >
+                Visa nästa placering →
+              </button>
+            )}
+
+            {allMedalsRevealed && (
+              <a
+                href={`/quiz/${submissions[0]?.id}`}
+                className="btn-primary btn-large"
+              >
+                Tillbaka till quizet
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -315,10 +414,10 @@ export default function QuizPresentation({
 
         .song-number {
           color: white;
-          opacity: 0.8;
-          font-size: 1rem;
-          margin-bottom: 1rem;
-          text-align: center;
+          opacity: 0.9;
+          font-size: 2rem;
+          font-weight: 700;
+          white-space: nowrap;
         }
 
         .song-info {
@@ -338,9 +437,17 @@ export default function QuizPresentation({
           margin: 0;
         }
 
+        .spotify-embed-row {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 2rem;
+          margin-bottom: 3rem;
+        }
+
         .spotify-embed {
           max-width: 500px;
-          margin: 0 auto 3rem auto;
+          width: 100%;
         }
 
         .guesses-title {
@@ -363,7 +470,6 @@ export default function QuizPresentation({
         .guess-box {
           background: rgba(255, 255, 255, 0.95);
           border-radius: 1rem;
-          padding: 2rem 1rem;
           text-align: center;
           transition: all 0.3s;
           cursor: pointer;
@@ -371,7 +477,6 @@ export default function QuizPresentation({
           min-height: 120px;
           display: flex;
           flex-direction: column;
-          justify-content: center;
           align-items: center;
         }
 
@@ -381,7 +486,7 @@ export default function QuizPresentation({
         }
 
         .guess-box.correct-answer {
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          background-color: #059669;
           color: white;
         }
 
@@ -409,22 +514,30 @@ export default function QuizPresentation({
 
         .guess-name {
           font-weight: 700;
+          font-size: 2rem;
           margin-bottom: 0.5rem;
+          margin-top: 0.5rem;
         }
 
         .guess-count {
-          font-size: 0.875rem;
-          opacity: 0.7;
+          font-size: 3rem;
+          font-weight: 700;
+          opacity: 0.8;
+          width: 100%;
+          border-bottom: 2px solid black;
+          border-radius: 1rem 1rem 0 0;
+          background-color: #C8A2C8; /* lilac */
         }
 
         .guess-box.correct-answer .guess-count {
           opacity: 1;
           font-weight: 600;
+          background-color: #059669;
         }
 
         .guess-box.correct-answer .guess-count::before {
           content: "✓ ";
-          font-size: 1.2rem;
+          font-size: 3rem;
         }
 
         /* Tooltip */
@@ -452,12 +565,15 @@ export default function QuizPresentation({
 
         .tooltip-title {
           font-weight: 600;
+          font-size: 1.5rem;
+          opacity: 0.8;
           margin-bottom: 0.5rem;
           border-bottom: 1px solid rgba(255, 255, 255, 0.3);
           padding-bottom: 0.25rem;
         }
 
         .tooltip-name {
+          font-size: 2rem;
           padding: 0.25rem 0;
         }
 
@@ -544,6 +660,10 @@ export default function QuizPresentation({
           transform: translateX(-50px);
         }
 
+        .leaderboard-entry:last-child {
+          margin-bottom: 0;
+        }
+
         .leaderboard-entry.reveal {
           animation: slideIn 0.5s ease-out forwards;
         }
@@ -552,11 +672,32 @@ export default function QuizPresentation({
           opacity: 0;
         }
 
+        .leaderboard-entry.medal-reveal {
+          animation: slideIn 0.5s ease-out forwards;
+        }
+
         @keyframes slideIn {
           to {
             opacity: 1;
             transform: translateX(0);
           }
+        }
+
+        .player-names {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+          flex: 1;
+        }
+
+        .shared-badge {
+          display: block;
+          font-size: 0.75rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: #6b7280;
+          margin-top: 0.25rem;
         }
 
         .placement {
@@ -591,6 +732,15 @@ export default function QuizPresentation({
           .guess-grid {
             grid-template-columns: repeat(2, 1fr);
             gap: 1rem;
+          }
+
+          .spotify-embed-row {
+            flex-direction: column;
+            gap: 1rem;
+          }
+
+          .song-number {
+            font-size: 1.5rem;
           }
 
           .song-title {

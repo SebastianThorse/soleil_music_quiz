@@ -55,10 +55,6 @@ const [isParticipant] = await db
   )
   .limit(1);
 
-if (!isParticipant) {
-  return Astro.redirect(`/quiz/${id}`);
-}
-
 // Get all submissions (without revealing who submitted)
 const submissions = await db
   .select({
@@ -71,14 +67,21 @@ const submissions = await db
   .from(songSubmissions)
   .where(eq(songSubmissions.quizId, quiz.id));
 
-// Get all participants for the dropdown
+// Get all participants that have submitted a song for the dropdown
 const participants = await db
-  .select({
+  .selectDistinct({
     id: userTable.id,
     name: userTable.name,
   })
   .from(quizParticipants)
   .innerJoin(userTable, eq(quizParticipants.userId, userTable.id))
+  .innerJoin(
+    songSubmissions,
+    and(
+      eq(songSubmissions.userId, quizParticipants.userId),
+      eq(songSubmissions.quizId, quiz.id),
+    ),
+  )
   .where(eq(quizParticipants.quizId, quiz.id));
 
 // Get user's existing guesses
@@ -96,7 +99,10 @@ const guessMap = new Map(
 );
 
 let error = '';
-let success = '';
+let success =
+  Astro.url.searchParams.get('saved') === '1'
+    ? 'Dina gissningar har sparats!'
+    : '';
 
 // Handle POST requests
 if (Astro.request.method === 'POST') {
@@ -104,54 +110,71 @@ if (Astro.request.method === 'POST') {
     const formData = await Astro.request.formData();
     const action = formData.get('action')?.toString();
 
-    if (action === 'submit_guesses') {
-      // Get all guesses from form
-      const newGuesses: { songSubmissionId: number; guessedUserId: string }[] =
-        [];
-
-      for (const submission of submissions) {
-        const guessedUserId = formData
-          .get(`guess_${submission.id}`)
-          ?.toString();
-        if (guessedUserId) {
-          newGuesses.push({
-            songSubmissionId: submission.id,
-            guessedUserId,
-          });
-        }
+    if (action === 'join') {
+      if (!isParticipant) {
+        await db.insert(quizParticipants).values({
+          quizId: quiz.id,
+          userId: user.id,
+        });
       }
-
-      if (newGuesses.length === 0) {
-        error = 'Du måste gissa på minst en låt';
+      return Astro.redirect(`/quiz/${id}/guess`);
+    } else if (action === 'submit_guesses') {
+      if (!isParticipant) {
+        error = 'Du måste gå med i quizet först';
       } else {
-        // Delete existing guesses and insert new ones in a transaction
-        await db.transaction(async (tx) => {
-          // Delete existing guesses for this user in this quiz
-          await tx
-            .delete(guesses)
-            .where(
-              and(eq(guesses.quizId, quiz.id), eq(guesses.guesserId, user.id)),
-            );
+        // Get all guesses from form
+        const newGuesses: {
+          songSubmissionId: number;
+          guessedUserId: string;
+        }[] = [];
 
-          // Insert new guesses with correctness check
-          for (const guess of newGuesses) {
-            const submission = submissions.find(
-              (s) => s.id === guess.songSubmissionId,
-            );
-            const isCorrect = submission?.userId === guess.guessedUserId;
-
-            await tx.insert(guesses).values({
-              quizId: quiz.id,
-              guesserId: user.id,
-              songSubmissionId: guess.songSubmissionId,
-              guessedUserId: guess.guessedUserId,
-              isCorrect: isCorrect,
+        for (const submission of submissions) {
+          const guessedUserId = formData
+            .get(`guess_${submission.id}`)
+            ?.toString();
+          if (guessedUserId) {
+            newGuesses.push({
+              songSubmissionId: submission.id,
+              guessedUserId,
             });
           }
-        });
+        }
 
-        success = `Dina gissningar har sparats! (${newGuesses.length} av ${submissions.length} låtar)`;
-        return Astro.redirect(`/quiz/${id}/guess`);
+        if (newGuesses.length === 0) {
+          error = 'Du måste gissa på minst en låt';
+        } else {
+          // Delete existing guesses and insert new ones in a transaction
+          await db.transaction(async (tx) => {
+            // Delete existing guesses for this user in this quiz
+            await tx
+              .delete(guesses)
+              .where(
+                and(
+                  eq(guesses.quizId, quiz.id),
+                  eq(guesses.guesserId, user.id),
+                ),
+              );
+
+            // Insert new guesses with correctness check
+            for (const guess of newGuesses) {
+              const submission = submissions.find(
+                (s) => s.id === guess.songSubmissionId,
+              );
+              const isCorrect = submission?.userId === guess.guessedUserId;
+
+              await tx.insert(guesses).values({
+                quizId: quiz.id,
+                guesserId: user.id,
+                songSubmissionId: guess.songSubmissionId,
+                guessedUserId: guess.guessedUserId,
+                isCorrect: isCorrect,
+              });
+            }
+          });
+
+          success = `Dina gissningar har sparats! (${newGuesses.length} av ${submissions.length} låtar)`;
+          return Astro.redirect(`/quiz/${id}/guess?saved=1`);
+        }
       }
     } else if (action === 'reset_to_open' && isAdmin) {
       // Admin action: Delete all guesses and change status back to open
@@ -209,7 +232,11 @@ const getSpotifyTrackId = (link: string): string | null => {
 
     {error && <div class="error-message">{error}</div>}
 
-    {success && <div class="success-message">{success}</div>}
+    {success && (
+      <div class="success-message" id="success-message">
+        {success}
+      </div>
+    )}
 
     <div class="info-box">
       <p>
@@ -218,6 +245,25 @@ const getSpotifyTrackId = (link: string): string | null => {
       </p>
     </div>
 
+    {
+      !isParticipant && (
+        <div class="join-card">
+          <p>
+            Du hann inte gå med innan gissningsfasen startade, men du kan
+            fortfarande gå med och gissa!
+          </p>
+          <form method="POST">
+            <input type="hidden" name="action" value="join" />
+            <button type="submit" class="btn-primary">
+              Gå med i quizet
+            </button>
+          </form>
+        </div>
+      )
+    }
+
+    {
+      isParticipant && (
     <form method="POST" class="guessing-form">
       <input type="hidden" name="action" value="submit_guesses" />
 
@@ -277,6 +323,7 @@ const getSpotifyTrackId = (link: string): string | null => {
                     {participants.map((participant) => (
                       <option
                         value={participant.id}
+                        data-name={participant.name}
                         selected={existingGuess === participant.id}
                       >
                         {participant.name}
@@ -291,11 +338,16 @@ const getSpotifyTrackId = (link: string): string | null => {
       </div>
 
       <div class="form-actions">
+        <p id="unsaved-indicator" class="unsaved-indicator" hidden>
+          ⚠️ Du har osparade ändringar
+        </p>
         <button type="submit" class="btn-primary btn-large">
           Spara gissningar
         </button>
       </div>
     </form>
+      )
+    }
 
     {/* Admin controls */}
     {
@@ -320,6 +372,90 @@ const getSpotifyTrackId = (link: string): string | null => {
     }
   </div>
 </Layout>
+
+<script>
+  // Tracks the guesses currently selected in the form (not yet saved) so we
+  // can warn the user when the same participant is picked more than once.
+  const selects = Array.from(
+    document.querySelectorAll<HTMLSelectElement>('.guess-select'),
+  );
+
+  function updateSelectionCounts() {
+    const currentSelections = new Map<string, string>();
+    for (const select of selects) {
+      if (select.value) currentSelections.set(select.name, select.value);
+    }
+
+    const counts = new Map<string, number>();
+    for (const guessedUserId of currentSelections.values()) {
+      counts.set(guessedUserId, (counts.get(guessedUserId) ?? 0) + 1);
+    }
+
+    for (const select of selects) {
+      for (const option of Array.from(select.options)) {
+        if (!option.value) continue;
+        const baseName = option.dataset.name ?? option.textContent ?? '';
+        const count = counts.get(option.value) ?? 0;
+        // option.textContent = count > 1 ? `${baseName} (vald ${count} ggr)` : baseName;
+        option.textContent = baseName + ` - (${count} ggr)`;
+      }
+    }
+  }
+
+  for (const select of selects) {
+    select.addEventListener('change', updateSelectionCounts);
+  }
+
+  updateSelectionCounts();
+
+  // Warn the user when they have unsaved guess changes.
+  const initialValues = new Map(selects.map((select) => [select.name, select.value]));
+  const unsavedIndicator = document.getElementById('unsaved-indicator');
+  const guessingForm = document.querySelector<HTMLFormElement>('.guessing-form');
+  let hasUnsavedChanges = false;
+
+  function updateUnsavedState() {
+    hasUnsavedChanges = selects.some(
+      (select) => select.value !== initialValues.get(select.name),
+    );
+    unsavedIndicator?.toggleAttribute('hidden', !hasUnsavedChanges);
+  }
+
+  for (const select of selects) {
+    select.addEventListener('change', updateUnsavedState);
+  }
+
+  guessingForm?.addEventListener('submit', () => {
+    hasUnsavedChanges = false;
+
+    // Give immediate feedback while the page reloads with the save confirmation.
+    const submitButton =
+      guessingForm.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = 'Sparar...';
+    }
+  });
+
+  window.addEventListener('beforeunload', (event) => {
+    if (!hasUnsavedChanges) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
+  // Auto-dismiss the "saved" confirmation and drop ?saved=1 from the URL.
+  const successMessage = document.getElementById('success-message');
+  if (successMessage) {
+    setTimeout(() => {
+      successMessage.classList.add('fade-out');
+      setTimeout(() => successMessage.remove(), 500);
+    }, 3000);
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('saved');
+    window.history.replaceState({}, '', url);
+  }
+</script>
 
 <style>
   .container {
@@ -371,6 +507,20 @@ const getSpotifyTrackId = (link: string): string | null => {
     font-size: 0.875rem;
   }
 
+  .join-card {
+    padding: 1.5rem;
+    background: #f9fafb;
+    border-radius: 0.5rem;
+    border: 2px solid #e5e7eb;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+
+  .join-card p {
+    margin: 0 0 1rem 0;
+    color: #374151;
+  }
+
   .error-message,
   .success-message {
     padding: 1rem;
@@ -389,6 +539,11 @@ const getSpotifyTrackId = (link: string): string | null => {
     background-color: #d1fae5;
     border: 1px solid #6ee7b7;
     color: #065f46;
+    transition: opacity 0.5s ease;
+  }
+
+  .success-message.fade-out {
+    opacity: 0;
   }
 
   .guessing-form {
@@ -495,6 +650,17 @@ const getSpotifyTrackId = (link: string): string | null => {
     border: 2px solid #0070f3;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
     text-align: center;
+  }
+
+  .unsaved-indicator {
+    margin: 0 0 1rem 0;
+    color: #92400e;
+    background-color: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 
   .btn-primary,

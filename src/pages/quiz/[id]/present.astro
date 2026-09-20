@@ -98,7 +98,10 @@ const submissionsWithGuesses = shuffledSubmissions.map((submission) => {
   // Count guesses per participant - INCLUDE ALL PARTICIPANTS
   const guessDistribution = participants.map((participant) => {
     const guessesForThisPerson = songGuesses.filter(
-      (g) => g.guessedUserId === participant.id,
+      (g) =>
+        g.guessedUserId === participant.id &&
+        // Exclude a submitter correctly guessing themselves
+        !(g.guesserId === g.guessedUserId && g.isCorrect),
     );
     const guessers = guessesForThisPerson.map((g) => g.guesserName);
 

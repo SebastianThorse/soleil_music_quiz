@@ -8,7 +8,8 @@ import {
   songSubmissions,
   user as userTable,
 } from '../../../lib/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import QuizResults from '../../../components/QuizResults';
 
 const { user } = Astro.locals;
@@ -43,6 +44,27 @@ const submissions = await db
   .innerJoin(userTable, eq(songSubmissions.userId, userTable.id))
   .where(eq(songSubmissions.quizId, quiz.id));
 
+// Get the logged in user's own guesses so they can be shown alongside the reveal
+const guessedUser = alias(userTable, 'guessedUser');
+const ownGuesses = await db
+  .select({
+    songSubmissionId: guesses.songSubmissionId,
+    guessedUserName: guessedUser.name,
+    isCorrect: guesses.isCorrect,
+  })
+  .from(guesses)
+  .innerJoin(guessedUser, eq(guesses.guessedUserId, guessedUser.id))
+  .where(and(eq(guesses.quizId, quiz.id), eq(guesses.guesserId, user.id)));
+
+const ownGuessBySubmission = new Map(
+  ownGuesses.map((g) => [g.songSubmissionId, g]),
+);
+
+const submissionsWithOwnGuess = submissions.map((submission) => ({
+  ...submission,
+  ownGuess: ownGuessBySubmission.get(submission.id) ?? null,
+}));
+
 // Get leaderboard data
 const leaderboardData = await db
   .select({
@@ -76,7 +98,7 @@ const leaderboardData = await db
       <QuizResults
         client:load
         quizId={quiz.id}
-        songs={submissions}
+        songs={submissionsWithOwnGuess}
         leaderboard={leaderboardData}
       />
     </div>
