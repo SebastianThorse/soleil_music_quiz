@@ -32,6 +32,8 @@ const names = [
   'Karin Lund',
   'Lars Holm',
   'Märta Östergård',
+  'Nils Forsberg',
+  'Örjan Söderström',
 ];
 names.forEach((name, i) =>
   db
@@ -55,12 +57,13 @@ for (const [id, status] of [
   [42, 'completed'],
   [43, 'guessing'],
   [44, 'open'],
+  [46, 'completed'],
 ]) {
   db.prepare(
     'INSERT INTO quizzes (id,name,description,created_by,status,created_at,closed_at) VALUES (?,?,?,?,?,?,?)',
   ).run(
     id,
-    'FredagslÃ¥ten – höst på Soleil 🎵',
+    id === 46 ? 'Storbild – 15 bidrag' : 'FredagslÃ¥ten – höst på Soleil 🎵',
     'Fiktivt exempel för granskning. Å, ä och ö ska visas rätt.',
     'demo-0',
     status,
@@ -88,10 +91,18 @@ for (const [id, status] of [
     ['Sir Duke', 'Stevie Wonder'],
     ['Emerald', 'Thin Lizzy'],
     ['Skånegatan', 'Mauro Scocco'],
+    ['Homecoming', 'Green Day'],
+    ['Milk', 'The 1975'],
+    ['Dirty Hound', 'Cicada Rhythm'],
+    ['Elephant Talk', 'King Crimson'],
+    ['Oh Yeah', 'Yello'],
+    ['Ginger', 'Riton, Kah-Lo'],
+    ['La Grange', 'ZZ Top'],
   ];
   songs.forEach(([title, artist], s) => {
+    if (id !== 46 && s >= 8) return;
     const songId = id * 100 + s;
-    const owner = s === 0 ? 12 : s;
+    const owner = id === 46 ? (s + 14) % names.length : s === 0 ? 12 : s;
     db.prepare(
       'INSERT INTO song_submissions (id,quiz_id,user_id,song_link,song_title,artist,submitted_at) VALUES (?,?,?,?,?,?,?)',
     ).run(

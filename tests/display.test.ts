@@ -4,6 +4,7 @@ import { displayText } from '../src/lib/display-text.ts';
 import {
   buildLeaderboardGroups,
   getSpotifyTrackId,
+  presentationEntries,
   presentationPages,
 } from '../src/lib/quiz-display.ts';
 
@@ -65,29 +66,34 @@ test('Spotify embeds accept track links and fall back for search, short and othe
   assert.equal(getSpotifyTrackId('invalid'), null);
 });
 
-test('presentation pages keep tied medal groups together and retain every player', () => {
-  const entries = Array.from({ length: 13 }, (_, i) => ({
+test('15 players share one screen; only larger results paginate, including shared medals', () => {
+  const entries = Array.from({ length: 15 }, (_, i) => ({
     userId: String(i),
     userName: 'Spelare ' + i,
-    correctGuesses: Math.min(i, 7),
-    totalGuesses: 8,
+    correctGuesses: Math.min(i, 13),
+    totalGuesses: 15,
   }));
-  assert.deepEqual(
-    presentationPages(entries, 0).map((p) => p.length),
-    [6, 1],
-  );
-  const pages = presentationPages(entries, 1);
-  assert.deepEqual(
-    pages.map((p) => p.length),
-    [6, 1, 6],
-  );
-  assert.ok(pages[2].every((p) => p.rank === 1 && p.shared));
-  assert.equal(new Set(pages.flat().map((p) => p.userId)).size, entries.length);
+  const before = presentationEntries(entries, 0);
+  assert.equal(before.length, 12);
+  assert.ok(before.every((e) => e.rank > 3));
+  const bronze = presentationEntries(entries, 1);
+  assert.equal(bronze.length, 13);
+  assert.equal(bronze.at(-1)?.rank, 3);
+  const all = presentationEntries(entries, 2);
+  assert.equal(all.length, 15);
+  assert.equal(new Set(all.map((e) => e.userId)).size, 15);
+  assert.ok(all.slice(-2).every((e) => e.rank === 1 && e.shared));
   const ties = entries.map((e) => ({ ...e, correctGuesses: 0 }));
-  assert.deepEqual(presentationPages(ties, 0), []);
+  assert.deepEqual(presentationEntries(ties, 0), []);
+  assert.equal(presentationEntries(ties, 1).length, 15);
+  assert.deepEqual(presentationEntries([], 1), []);
+  assert.equal(presentationPages(entries, 2).length, 1);
+  const sixteen = [...entries, { ...entries[0], userId: 'extra' }];
+  const fallback = presentationPages(sixteen, 3);
   assert.deepEqual(
-    presentationPages(ties, 1).map((p) => p.length),
-    [6, 6, 1],
+    fallback.map((page) => page.length),
+    [15, 1],
   );
-  assert.deepEqual(presentationPages([], 1), []);
+  assert.equal(new Set(fallback.flat().map((entry) => entry.userId)).size, 16);
+  assert.deepEqual(presentationPages([], 0), []);
 });

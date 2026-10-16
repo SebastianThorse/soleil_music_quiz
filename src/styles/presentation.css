@@ -189,6 +189,40 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.2vh 1.2vw;
 }
+.p-guesses.is-sparse {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.p-guesses.is-compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.p-guesses.is-compact .p-guess {
+  padding: 0.7rem 1.2vw;
+}
+.p-guesses.is-compact .p-guess-top > strong {
+  font-size: 2.6rem;
+}
+.p-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 0.6rem;
+}
+.p-results.has-pages .p-ranking li {
+  padding: 0.7rem 1rem;
+}
+.p-song.has-pages .p-answer > strong {
+  font-size: 2.75rem;
+}
+.p-guesses.is-compact .p-guess-top > span {
+  font-size: clamp(1.25rem, 1.5vw, 1.8rem);
+}
+.p-guesses.with-guessers .p-guess {
+  padding: 0.7rem 1.2vw;
+}
+.p-guesses.with-guessers .p-guess-top > strong {
+  font-size: 2.6rem;
+}
 .p-guess {
   position: relative;
   background: var(--p-surface);
@@ -271,14 +305,6 @@
   padding: 1rem 3vw;
   z-index: 10;
 }
-.p-pagination {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 1rem;
-  padding-top: 1rem;
-  font-size: 1rem;
-}
 .p-empty {
   padding: 3vh 0;
   color: var(--p-muted);
@@ -288,7 +314,7 @@
   margin-bottom: 3vh;
 }
 .p-results-heading h1 {
-  font-size: clamp(2rem, 4vw, 4.5rem);
+  font-size: clamp(2rem, 3vw, 3.5rem);
   margin: 0.5rem 0;
 }
 .p-results-heading p {
@@ -298,8 +324,8 @@
 }
 .p-ranking {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
   list-style: none;
   padding: 0;
   margin: 0;
@@ -308,8 +334,8 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 1.3rem;
-  padding: 1.2rem;
+  gap: 1rem;
+  padding: 1rem;
   border: 1px solid var(--p-line);
   border-radius: 12px;
   background: var(--p-surface);
@@ -319,7 +345,7 @@
   background: #433d27;
 }
 .p-rank {
-  font-size: clamp(1.5rem, 2.7vw, 3rem);
+  font-size: clamp(1.5rem, 2vw, 2.5rem);
   font-weight: 800;
   min-width: 65px;
   font-variant-numeric: tabular-nums;
@@ -332,13 +358,13 @@
   color: var(--p-muted);
 }
 .p-player-name {
-  font-size: clamp(1.2rem, 2vw, 2.4rem);
+  font-size: clamp(1.2rem, 1.6vw, 2rem);
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 .p-score {
   text-align: right;
-  font-size: clamp(1.7rem, 3vw, 3.5rem);
+  font-size: clamp(1.7rem, 2.2vw, 2.75rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -375,9 +401,6 @@
   }
   .p-controls {
     padding: 0.6rem 3vw;
-  }
-  .p-pagination {
-    padding-top: 0.6rem;
   }
   .p-results-heading {
     margin-bottom: 1.5vh;
@@ -422,7 +445,13 @@
     gap: 0.4rem;
     padding: 1rem;
   }
-  .p-guesses {
+  .p-pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .p-guesses,
+  .p-guesses.is-sparse,
+  .p-guesses.is-compact {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
   }
@@ -442,13 +471,11 @@
   .p-controls .p-hint {
     display: none;
   }
-  .p-pagination {
-    justify-content: center;
-    flex-wrap: wrap;
-  }
 }
 @media (max-width: 450px) {
-  .p-guesses {
+  .p-guesses,
+  .p-guesses.is-sparse,
+  .p-guesses.is-compact {
     grid-template-columns: 1fr;
   }
   .p-controls > * {

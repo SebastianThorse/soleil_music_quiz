@@ -12,6 +12,10 @@ those names visible. Only **Avslöja avsändaren** reveals the submitter and mar
 correct card. Global Space/Enter shortcuts do not reveal an unanswered song.
 After the reveal, use the next button, Space or the right arrow to continue.
 The left arrow goes back. A previously revealed song stays revealed when revisited.
+Up to 15 guess cards or revealed leaderboard entries appear together without page controls.
+Pagination appears only when more than 15 people need to be displayed.
+The layout targets a full-HD (1920×1080) room display with up to 15 participants;
+smaller screens can scroll rather than hiding entries.
 Medal placements are revealed from the bottom up; tied players keep a shared rank.
 
 ### Local visual fixture (Node 22.18+)
@@ -29,15 +33,17 @@ It does not connect to Turso or use the normal `.astro/content.db` database.
 
 The home page includes open, guessing and completed quizzes. The demo covers
 Swedish text and emoji, an existing broken quiz name, a long title, missing song
-metadata, a Spotify search link, more than six guess cards, an unguessed submitter
-and tied winners. Review at 1920×1080, 1280×720 and a narrow mobile viewport.
+metadata, a Spotify search link, all guess cards on one screen, an unguessed submitter
+and tied winners. Quiz 46 ("Storbild – 15 bidrag") contains 15 songs and 15
+fictional participants for a full-HD single-screen review. Review at 1920×1080
+and a narrow mobile viewport.
 
 ```sh
 npm test
 npm run build
 ```
 
-The tests cover mixed Unicode repairs, shared placements, presentation pagination
+The tests cover mixed Unicode repairs, shared placements, complete presentation rankings
 and supported Spotify URLs. For a manual regression check, confirm that hovering,
 showing guesser names and pressing Space on the page do not reveal an answer.
 Then activate the reveal button, navigate backwards and through the final leaderboard.

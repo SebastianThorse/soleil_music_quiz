@@ -4,6 +4,7 @@ import {
   buildLeaderboardGroups,
   getSpotifyTrackId,
   presentationPages,
+  PRESENTATION_PAGE_SIZE,
   type LeaderboardEntry,
 } from '../lib/quiz-display';
 
@@ -29,7 +30,41 @@ interface Props {
   submissions: Submission[];
   leaderboard: LeaderboardEntry[];
 }
-const PAGE_SIZE = 6;
+
+function Pagination({
+  page,
+  pages,
+  label,
+  onChange,
+}: {
+  page: number;
+  pages: number;
+  label: string;
+  onChange: (page: number) => void;
+}) {
+  if (pages <= 1) return null;
+  return (
+    <nav className="p-pagination" aria-label={label}>
+      <button
+        className="p-quiet"
+        disabled={page === 0}
+        onClick={() => onChange(page - 1)}
+      >
+        ← Föregående
+      </button>
+      <span>
+        Sida {page + 1} av {pages}
+      </span>
+      <button
+        className="p-quiet"
+        disabled={page + 1 >= pages}
+        onClick={() => onChange(page + 1)}
+      >
+        Nästa sida →
+      </button>
+    </nav>
+  );
+}
 
 export default function QuizPresentation({
   quizId,
@@ -58,11 +93,10 @@ export default function QuizPresentation({
             a.participantName.localeCompare(b.participantName, 'sv'),
         )
     : [];
-  const guessPages = Math.max(1, Math.ceil(guesses.length / PAGE_SIZE));
   const groups = [...buildLeaderboardGroups(leaderboard)].reverse();
   const medals = groups.filter((g) => g.rank <= 3);
-  const resultSheets = presentationPages(leaderboard, medalCount, PAGE_SIZE);
-  const resultPages = Math.max(1, resultSheets.length);
+  const resultSheets = presentationPages(leaderboard, medalCount);
+  const guessPages = Math.ceil(guesses.length / PRESENTATION_PAGE_SIZE);
   const allMedals = medalCount >= medals.length;
 
   const moveSong = (index: number) => {
@@ -89,7 +123,8 @@ export default function QuizPresentation({
         setScreen('results');
       }
     } else if (screen === 'results' && !allMedals) {
-      setResultPage(resultSheets.length);
+      const visibleCount = resultSheets.flat().length;
+      setResultPage(Math.floor(visibleCount / PRESENTATION_PAGE_SIZE));
       setMedalCount((count) => count + 1);
     }
   };
@@ -200,7 +235,7 @@ export default function QuizPresentation({
       )}
       {screen === 'song' && current && (
         <section
-          className="p-song"
+          className={`p-song ${guessPages > 1 ? 'has-pages' : ''}`}
           aria-label={`Låt ${songIndex + 1} av ${submissions.length}`}
         >
           <div className="p-song-heading">
@@ -266,9 +301,14 @@ export default function QuizPresentation({
             </button>
           </div>
           {guesses.length ? (
-            <div className="p-guesses">
+            <div
+              className={`p-guesses ${guesses.length <= 4 ? 'is-sparse' : guesses.length > 9 ? 'is-compact' : ''} ${showGuessers ? 'with-guessers' : ''}`}
+            >
               {guesses
-                .slice(guessPage * PAGE_SIZE, (guessPage + 1) * PAGE_SIZE)
+                .slice(
+                  guessPage * PRESENTATION_PAGE_SIZE,
+                  (guessPage + 1) * PRESENTATION_PAGE_SIZE,
+                )
                 .map((guess) => (
                   <div
                     className={`p-guess ${guess.isCorrect && isRevealed ? 'is-correct' : ''}`}
@@ -289,10 +329,9 @@ export default function QuizPresentation({
                     {guess.isCorrect && isRevealed && (
                       <span className="p-correct-label">✓ Rätt avsändare</span>
                     )}
-                    {showGuessers && (
+                    {showGuessers && guess.guessers.length > 0 && (
                       <p className="p-guessers">
-                        {guess.guessers.map(displayText).join(', ') ||
-                          'Ingen annan gissade på avsändaren.'}
+                        {guess.guessers.map(displayText).join(', ')}
                       </p>
                     )}
                     {!showGuessers && guess.guessers.length > 0 && (
@@ -306,31 +345,18 @@ export default function QuizPresentation({
           ) : (
             <p className="p-empty">Inga gissningar på den här låten ännu.</p>
           )}
-          {guessPages > 1 && (
-            <div className="p-pagination" aria-label="Sidor med gissningar">
-              <button
-                className="p-quiet"
-                disabled={guessPage === 0}
-                onClick={() => setGuessPage((p) => p - 1)}
-              >
-                ← Föregående
-              </button>
-              <span>
-                Sida {guessPage + 1} av {guessPages}
-              </span>
-              <button
-                className="p-quiet"
-                disabled={guessPage + 1 >= guessPages}
-                onClick={() => setGuessPage((p) => p + 1)}
-              >
-                Fler gissningar →
-              </button>
-            </div>
-          )}
+          <Pagination
+            page={guessPage}
+            pages={guessPages}
+            label="Sidor med gissningar"
+            onChange={setGuessPage}
+          />
         </section>
       )}
       {screen === 'results' && (
-        <section className="p-results">
+        <section
+          className={`p-results ${resultSheets.length > 1 ? 'has-pages' : ''}`}
+        >
           <div className="p-results-heading">
             <span className="p-eyebrow">
               {allMedals ? 'Hela resultatet' : 'Spänningen stiger'}
@@ -369,27 +395,12 @@ export default function QuizPresentation({
                 : 'Inga gissningar har sparats i det här quizet.'}
             </p>
           )}
-          {resultPages > 1 && (
-            <div className="p-pagination" aria-label="Sidor med resultat">
-              <button
-                className="p-quiet"
-                disabled={resultPage === 0}
-                onClick={() => setResultPage((p) => p - 1)}
-              >
-                ← Föregående
-              </button>
-              <span>
-                Sida {resultPage + 1} av {resultPages}
-              </span>
-              <button
-                className="p-quiet"
-                disabled={resultPage + 1 >= resultPages}
-                onClick={() => setResultPage((p) => p + 1)}
-              >
-                Fler resultat →
-              </button>
-            </div>
-          )}
+          <Pagination
+            page={resultPage}
+            pages={resultSheets.length}
+            label="Sidor med resultat"
+            onChange={setResultPage}
+          />
         </section>
       )}
       {screen !== 'start' && (

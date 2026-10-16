@@ -5,6 +5,8 @@ export interface LeaderboardEntry {
   totalGuesses: number;
 }
 
+export const PRESENTATION_PAGE_SIZE = 15;
+
 export function buildLeaderboardGroups(entries: LeaderboardEntry[]) {
   const sorted = [...entries].sort(
     (a, b) => b.correctGuesses - a.correctGuesses,
@@ -33,30 +35,33 @@ export function getSpotifyTrackId(link: string): string | null {
   }
 }
 
-// Give each newly revealed medal group its own page, including tied winners.
-export function presentationPages(
+// Medal groups stay hidden until revealed; pagination is applied separately.
+export function presentationEntries(
   entries: LeaderboardEntry[],
   revealedMedals: number,
-  pageSize = 6,
 ) {
   const groups = [...buildLeaderboardGroups(entries)].reverse();
-  const rows = (group: (typeof groups)[number]) =>
+  return [
+    ...groups.filter((g) => g.rank > 3),
+    ...groups.filter((g) => g.rank <= 3).slice(0, revealedMedals),
+  ].flatMap((group) =>
     group.entries.map((entry) => ({
       ...entry,
       rank: group.rank,
       shared: group.entries.length > 1,
-    }));
-  const chunk = (items: ReturnType<typeof rows>) => {
-    const pages: (typeof items)[] = [];
-    for (let i = 0; i < items.length; i += pageSize)
-      pages.push(items.slice(i, i + pageSize));
-    return pages;
-  };
-  return [
-    ...chunk(groups.filter((g) => g.rank > 3).flatMap(rows)),
-    ...groups
-      .filter((g) => g.rank <= 3)
-      .slice(0, revealedMedals)
-      .flatMap((g) => chunk(rows(g))),
-  ];
+    })),
+  );
+}
+
+// Paging is a fallback only: normal quizzes remain on one full-HD screen.
+export function presentationPages(
+  entries: LeaderboardEntry[],
+  revealedMedals: number,
+) {
+  const visible = presentationEntries(entries, revealedMedals);
+  const pages: (typeof visible)[] = [];
+  for (let i = 0; i < visible.length; i += PRESENTATION_PAGE_SIZE) {
+    pages.push(visible.slice(i, i + PRESENTATION_PAGE_SIZE));
+  }
+  return pages;
 }
