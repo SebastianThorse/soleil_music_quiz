@@ -1,8 +1,11 @@
 ---
 // src/pages/login.astro
 import SignIn from '../components/SignIn';
+import Layout from '../layouts/Layout.astro';
 const { user, session } = Astro.locals;
 const initialSession = user && session ? { user, session } : null;
 ---
 
-<SignIn client:only="react" initialSession={initialSession} />
+<Layout>
+  <div class="container auth-container"><SignIn client:only="react" initialSession={initialSession} /></div>
+</Layout>

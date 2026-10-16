@@ -1,5 +1,49 @@
 # 🧞 Commands
 
+## UI review
+
+The interface uses a shared Swedish/UTF-8 document shell and shared styles in
+`src/styles`. The presentation screen has a separate dark theme for the room display.
+Existing mojibake is repaired for display only. No stored quiz data is rewritten.
+
+During the presentation, the song and neutral guess cards appear first. Hover or
+keyboard-focus a card to see who guessed, or use **Visa vem som gissade** to keep
+those names visible. Only **Avslöja avsändaren** reveals the submitter and marks the
+correct card. Global Space/Enter shortcuts do not reveal an unanswered song.
+After the reveal, use the next button, Space or the right arrow to continue.
+The left arrow goes back. A previously revealed song stays revealed when revisited.
+Medal placements are revealed from the bottom up; tied players keep a shared rank.
+
+### Local visual fixture (Node 22.18+)
+
+```sh
+npm ci
+npm run demo:seed
+TURSO_DATABASE_URL=file:.astro/ui-demo.db BETTER_AUTH_URL=http://localhost:4321 PUBLIC_APP_URL=http://localhost:4321 npm run dev
+```
+
+Sign in at `http://localhost:4321/login` with `demo0@example.com` and
+`Fredagsdemo2026!`. These are fictional local demo credentials. The seed command
+creates only `.astro/ui-demo.db` and refuses to overwrite an existing file.
+It does not connect to Turso or use the normal `.astro/content.db` database.
+
+The home page includes open, guessing and completed quizzes. The demo covers
+Swedish text and emoji, an existing broken quiz name, a long title, missing song
+metadata, a Spotify search link, more than six guess cards, an unguessed submitter
+and tied winners. Review at 1920×1080, 1280×720 and a narrow mobile viewport.
+
+```sh
+npm test
+npm run build
+```
+
+The tests cover mixed Unicode repairs, shared placements, presentation pagination
+and supported Spotify URLs. For a manual regression check, confirm that hovering,
+showing guesser names and pressing Space on the page do not reveal an answer.
+Then activate the reveal button, navigate backwards and through the final leaderboard.
+Check a new submission containing `Å, ä och ö 🎵` and save a changed guess on mobile.
+
+
 All commands are run from the root of the project, from a terminal:
 
 | Command                   | Action                                           |

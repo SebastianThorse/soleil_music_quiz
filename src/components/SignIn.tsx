@@ -1,14 +1,11 @@
-// src/components/AuthButtons.tsx
+import { useEffect, useState, type FormEvent } from 'react';
+import { authClient, useSession } from '../lib/auth-client';
+
 interface Props {
   initialSession?: any;
 }
-
-import { authClient, useSession } from '../lib/auth-client';
-import { useState, useEffect } from 'react';
-
-export default function AuthButtons({ initialSession }: Props) {
+export default function SignIn({ initialSession }: Props) {
   const { data: session } = useSession();
-  const currentSession = session ?? initialSession;
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,165 +13,118 @@ export default function AuthButtons({ initialSession }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [redirectUrl, setRedirectUrl] = useState('/');
-
-  // Get redirect URL from query params
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const redirect = params.get('redirect');
-    if (redirect) {
-      setRedirectUrl(redirect);
-    }
+    const target = new URLSearchParams(window.location.search).get('redirect');
+    if (
+      target?.startsWith('/') &&
+      !target.startsWith('//') &&
+      !target.includes('\\')
+    )
+      setRedirectUrl(target);
   }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     setError('');
     setLoading(true);
-
     try {
-      if (isSignUp) {
-        await authClient.signUp.email({
-          email,
-          password,
-          name,
-          callbackURL: redirectUrl,
-        });
-      } else {
-        await authClient.signIn.email({
-          email,
-          password,
-          callbackURL: redirectUrl,
-        });
+      const result = isSignUp
+        ? await authClient.signUp.email({
+            email,
+            password,
+            name,
+            callbackURL: redirectUrl,
+          })
+        : await authClient.signIn.email({
+            email,
+            password,
+            callbackURL: redirectUrl,
+          });
+      if (result.error) {
+        setError(
+          result.error.message || 'Det gick inte att logga in. Försök igen.',
+        );
+        return;
       }
-
       window.location.href = redirectUrl;
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+    } catch {
+      setError('Det gick inte att ansluta. Försök igen.');
     } finally {
       setLoading(false);
     }
   };
-
-  const handleLogout = async () => {
-    try {
-      await authClient.signOut({
-        fetchOptions: {
-          onSuccess: () => {
-            window.location.href = '/login';
-          },
-        },
-      });
-    } catch (error) {
-      // Still redirect even if there's an error
-      window.location.href = '/login';
-    }
-  };
-
-  if (currentSession) {
+  if (session ?? initialSession)
     return (
-      <div>
-        <p>Welcome, {currentSession.user.name || currentSession.user.email}!</p>
-        <button onClick={handleLogout}>Logout</button>
-      </div>
+      <a href="/" className="btn-primary">
+        Till dina quiz →
+      </a>
     );
-  }
-
   return (
-    <div style={{ maxWidth: '400px', margin: '0 auto', padding: '20px' }}>
-      <h2>{isSignUp ? 'Sign Up' : 'Login'}</h2>
-
-      <form onSubmit={handleSubmit}>
+    <div className="section">
+      <h1>{isSignUp ? 'Skapa konto' : 'Välkommen tillbaka.'}</h1>
+      <p className="subtitle">
+        Logga in, lämna en låt och lär känna kollegornas musiksmak.
+      </p>
+      <form onSubmit={handleSubmit} className="form">
         {isSignUp && (
-          <div style={{ marginBottom: '15px' }}>
-            <label
-              htmlFor="name"
-              style={{ display: 'block', marginBottom: '5px' }}
-            >
-              Name
+          <div className="form-group">
+            <label htmlFor="name" className="form-label">
+              Namn
             </label>
             <input
               id="name"
-              type="text"
+              autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              required={isSignUp}
-              style={{ width: '100%', padding: '8px' }}
+              required
             />
           </div>
         )}
-
-        <div style={{ marginBottom: '15px' }}>
-          <label
-            htmlFor="email"
-            style={{ display: 'block', marginBottom: '5px' }}
-          >
-            Email
+        <div className="form-group">
+          <label htmlFor="email" className="form-label">
+            E-postadress
           </label>
           <input
             id="email"
             type="email"
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            style={{ width: '100%', padding: '8px' }}
           />
         </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label
-            htmlFor="password"
-            style={{ display: 'block', marginBottom: '5px' }}
-          >
-            Password
+        <div className="form-group">
+          <label htmlFor="password" className="form-label">
+            Lösenord
           </label>
           <input
             id="password"
             type="password"
+            autoComplete={isSignUp ? 'new-password' : 'current-password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
-            style={{ width: '100%', padding: '8px' }}
           />
         </div>
-
         {error && (
-          <div style={{ color: 'red', marginBottom: '15px' }}>{error}</div>
+          <div role="alert" className="error-message">
+            {error}
+          </div>
         )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: '100%',
-            padding: '10px',
-            backgroundColor: '#0070f3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loading ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Login'}
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Vänta…' : isSignUp ? 'Skapa konto' : 'Logga in →'}
         </button>
       </form>
-
-      <p style={{ textAlign: 'center', marginTop: '15px' }}>
-        {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+      <p>
+        {isSignUp ? 'Har du redan ett konto?' : 'Första gången här?'}{' '}
         <button
+          className="btn-secondary btn-small"
           onClick={() => {
-            setIsSignUp(!isSignUp);
+            setIsSignUp((v) => !v);
             setError('');
           }}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#0070f3',
-            cursor: 'pointer',
-            textDecoration: 'underline',
-          }}
         >
-          {isSignUp ? 'Login' : 'Sign Up'}
+          {isSignUp ? 'Logga in' : 'Skapa konto'}
         </button>
       </p>
     </div>

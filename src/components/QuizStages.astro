@@ -1,0 +1,13 @@
+---
+interface Props { status: string; }
+const { status } = Astro.props;
+const current = status === 'open' ? 0 : status === 'guessing' ? 1 : 2;
+const steps = ['Lämna in låt', 'Gissa avsändare', 'Se resultat'];
+---
+<ol class="quiz-stages" aria-label="Quizets steg">
+  {steps.map((label, index) => (
+    <li class:list={{ current: index === current, done: index < current }} aria-current={index === current ? 'step' : undefined}>
+      <span aria-hidden="true">{index < current ? '✓' : index + 1}</span>{label}
+    </li>
+  ))}
+</ol>

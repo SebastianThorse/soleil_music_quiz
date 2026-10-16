@@ -121,9 +121,12 @@ const submissionsWithGuesses = shuffledSubmissions.map((submission) => {
 });
 ---
 
+<Layout presentation>
 <QuizPresentation
   client:only="react"
   quizName={quiz.name}
+  quizId={quiz.id}
   submissions={submissionsWithGuesses}
   leaderboard={leaderboardData}
 />
+</Layout>

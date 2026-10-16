@@ -1,6 +1,9 @@
 ---
 // src/pages/quiz/[id]/guess.astro
 import Layout from '../../../layouts/Layout.astro';
+import QuizStages from '../../../components/QuizStages.astro';
+import { displayText } from '../../../lib/display-text';
+import { getSpotifyTrackId } from '../../../lib/quiz-display';
 import { db } from '../../../lib/db';
 import {
   quizzes,
@@ -208,18 +211,7 @@ const shuffledSubmissions = [...submissions].sort((a, b) => {
   return hashA - hashB;
 });
 
-// Extract Spotify track ID for embedding
-const getSpotifyTrackId = (link: string): string | null => {
-  try {
-    // Handle various Spotify URL formats
-    // https://open.spotify.com/track/TRACK_ID
-    // https://open.spotify.com/track/TRACK_ID?si=...
-    const match = link.match(/track\/([a-zA-Z0-9]+)/);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
-};
+
 ---
 
 <Layout>
@@ -227,13 +219,15 @@ const getSpotifyTrackId = (link: string): string | null => {
     <div class="header">
       <a href={`/quiz/${id}`} class="back-link">← Tillbaka till quizet</a>
       <h1>Gissa vem som skickade vad</h1>
-      <p class="subtitle">{quiz.name}</p>
+      <p class="subtitle">{displayText(quiz.name)}</p>
     </div>
 
-    {error && <div class="error-message">{error}</div>}
+    <QuizStages status="guessing" />
+
+    {error && <div class="error-message" role="alert">{error}</div>}
 
     {success && (
-      <div class="success-message" id="success-message">
+      <div class="success-message" id="success-message" role="status">
         {success}
       </div>
     )}
@@ -252,7 +246,7 @@ const getSpotifyTrackId = (link: string): string | null => {
             Du hann inte gå med innan gissningsfasen startade, men du kan
             fortfarande gå med och gissa!
           </p>
-          <form method="POST">
+          <form method="POST" accept-charset="UTF-8">
             <input type="hidden" name="action" value="join" />
             <button type="submit" class="btn-primary">
               Gå med i quizet
@@ -264,7 +258,7 @@ const getSpotifyTrackId = (link: string): string | null => {
 
     {
       isParticipant && (
-    <form method="POST" class="guessing-form">
+    <form method="POST" accept-charset="UTF-8" class="guessing-form">
       <input type="hidden" name="action" value="submit_guesses" />
 
       <div class="songs-list">
@@ -278,16 +272,17 @@ const getSpotifyTrackId = (link: string): string | null => {
                 <div class="song-header">
                   <h3>Låt {index + 1}</h3>
                   {submission.songTitle && (
-                    <span class="song-title">{submission.songTitle}</span>
+                    <span class="song-title">{displayText(submission.songTitle)}</span>
                   )}
                 </div>
 
-                {submission.artist && <p class="artist">{submission.artist}</p>}
+                {submission.artist && <p class="artist">{displayText(submission.artist)}</p>}
 
                 {/* Spotify Embed */}
                 {spotifyId ? (
                   <div class="spotify-embed">
                     <iframe
+                      title={`Spotify: ${displayText(submission.songTitle) || `Låt ${index + 1}`}`}
                       style="border-radius:12px"
                       src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator`}
                       width="100%"
@@ -323,10 +318,10 @@ const getSpotifyTrackId = (link: string): string | null => {
                     {participants.map((participant) => (
                       <option
                         value={participant.id}
-                        data-name={participant.name}
+                        data-name={displayText(participant.name)}
                         selected={existingGuess === participant.id}
                       >
-                        {participant.name}
+                        {displayText(participant.name)}
                       </option>
                     ))}
                   </select>
@@ -338,6 +333,7 @@ const getSpotifyTrackId = (link: string): string | null => {
       </div>
 
       <div class="form-actions">
+        <output id="guess-progress" aria-live="polite"></output>
         <p id="unsaved-indicator" class="unsaved-indicator" hidden>
           ⚠️ Du har osparade ändringar
         </p>
@@ -380,7 +376,10 @@ const getSpotifyTrackId = (link: string): string | null => {
     document.querySelectorAll<HTMLSelectElement>('.guess-select'),
   );
 
+  const progress = document.getElementById('guess-progress');
+
   function updateSelectionCounts() {
+    if (progress) progress.textContent = `${selects.filter(s => s.value).length} av ${selects.length} låtar valda`;
     const currentSelections = new Map<string, string>();
     for (const select of selects) {
       if (select.value) currentSelections.set(select.name, select.value);
@@ -396,8 +395,7 @@ const getSpotifyTrackId = (link: string): string | null => {
         if (!option.value) continue;
         const baseName = option.dataset.name ?? option.textContent ?? '';
         const count = counts.get(option.value) ?? 0;
-        // option.textContent = count > 1 ? `${baseName} (vald ${count} ggr)` : baseName;
-        option.textContent = baseName + ` - (${count} ggr)`;
+        option.textContent = count > 0 ? `${baseName} (vald ${count} ${count === 1 ? 'gång' : 'gånger'})` : baseName;
       }
     }
   }
@@ -456,286 +454,3 @@ const getSpotifyTrackId = (link: string): string | null => {
     window.history.replaceState({}, '', url);
   }
 </script>
-
-<style>
-  .container {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 2rem;
-  }
-
-  .header {
-    margin-bottom: 2rem;
-  }
-
-  .back-link {
-    display: inline-block;
-    color: #6b7280;
-    text-decoration: none;
-    margin-bottom: 1rem;
-    font-size: 0.875rem;
-    transition: color 0.2s;
-  }
-
-  .back-link:hover {
-    color: #1f2937;
-  }
-
-  h1 {
-    font-size: 2rem;
-    color: #1f2937;
-    margin: 0 0 0.5rem 0;
-  }
-
-  .subtitle {
-    color: #6b7280;
-    font-size: 1.125rem;
-    margin: 0;
-  }
-
-  .info-box {
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    border-radius: 0.5rem;
-    padding: 1rem;
-    margin-bottom: 2rem;
-  }
-
-  .info-box p {
-    margin: 0;
-    color: #1e40af;
-    font-size: 0.875rem;
-  }
-
-  .join-card {
-    padding: 1.5rem;
-    background: #f9fafb;
-    border-radius: 0.5rem;
-    border: 2px solid #e5e7eb;
-    margin-bottom: 2rem;
-    text-align: center;
-  }
-
-  .join-card p {
-    margin: 0 0 1rem 0;
-    color: #374151;
-  }
-
-  .error-message,
-  .success-message {
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin-bottom: 1.5rem;
-    font-size: 0.875rem;
-  }
-
-  .error-message {
-    background-color: #fee2e2;
-    border: 1px solid #fca5a5;
-    color: #991b1b;
-  }
-
-  .success-message {
-    background-color: #d1fae5;
-    border: 1px solid #6ee7b7;
-    color: #065f46;
-    transition: opacity 0.5s ease;
-  }
-
-  .success-message.fade-out {
-    opacity: 0;
-  }
-
-  .guessing-form {
-    display: flex;
-    flex-direction: column;
-    gap: 2rem;
-  }
-
-  .songs-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2rem;
-  }
-
-  .song-card {
-    background: white;
-    border: 2px solid #e5e7eb;
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-  }
-
-  .song-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
-    gap: 1rem;
-  }
-
-  .song-header h3 {
-    font-size: 1.125rem;
-    color: #6b7280;
-    margin: 0;
-  }
-
-  .song-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: #1f2937;
-  }
-
-  .artist {
-    color: #6b7280;
-    margin: 0 0 1rem 0;
-    font-size: 0.875rem;
-  }
-
-  .spotify-embed {
-    margin: 1rem 0;
-  }
-
-  .external-link {
-    display: inline-block;
-    color: #0070f3;
-    text-decoration: none;
-    font-weight: 600;
-    margin: 1rem 0;
-  }
-
-  .external-link:hover {
-    text-decoration: underline;
-  }
-
-  .guess-section {
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid #e5e7eb;
-  }
-
-  .guess-label {
-    display: block;
-    font-weight: 600;
-    color: #1f2937;
-    margin-bottom: 0.5rem;
-    font-size: 0.875rem;
-  }
-
-  .guess-select {
-    width: 100%;
-    padding: 0.75rem;
-    border: 2px solid #d1d5db;
-    border-radius: 0.5rem;
-    font-size: 1rem;
-    font-family: inherit;
-    background-color: white;
-    cursor: pointer;
-    transition:
-      border-color 0.2s,
-      box-shadow 0.2s;
-  }
-
-  .guess-select:focus {
-    outline: none;
-    border-color: #0070f3;
-    box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
-  }
-
-  .form-actions {
-    position: sticky;
-    bottom: 2rem;
-    background: white;
-    padding: 1.5rem;
-    border-radius: 0.75rem;
-    border: 2px solid #0070f3;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-    text-align: center;
-  }
-
-  .unsaved-indicator {
-    margin: 0 0 1rem 0;
-    color: #92400e;
-    background-color: #fef3c7;
-    border: 1px solid #fcd34d;
-    border-radius: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .btn-primary,
-  .btn-danger {
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.2s;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-  }
-
-  .btn-primary {
-    background-color: #0070f3;
-    color: white;
-  }
-
-  .btn-primary:hover {
-    background-color: #0051cc;
-  }
-
-  .btn-large {
-    padding: 1rem 2rem;
-    font-size: 1.125rem;
-  }
-
-  .btn-danger {
-    background-color: #ef4444;
-    color: white;
-  }
-
-  .btn-danger:hover {
-    background-color: #dc2626;
-  }
-
-  .admin-section {
-    margin-top: 3rem;
-    padding: 2rem;
-    background: #fef2f2;
-    border: 2px solid #fca5a5;
-    border-radius: 0.75rem;
-  }
-
-  .admin-section h3 {
-    color: #991b1b;
-    margin: 0 0 1rem 0;
-    font-size: 1.125rem;
-  }
-
-  .warning-text {
-    color: #991b1b;
-    margin: 0 0 1.5rem 0;
-    font-weight: 500;
-  }
-
-  @media (max-width: 768px) {
-    .container {
-      padding: 1rem;
-    }
-
-    h1 {
-      font-size: 1.5rem;
-    }
-
-    .song-header {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.5rem;
-    }
-
-    .form-actions {
-      position: static;
-      margin-top: 2rem;
-    }
-  }
-</style>

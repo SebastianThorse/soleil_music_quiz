@@ -35,5 +35,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return context.redirect(redirectParam || '/');
   }
 
-  return next();
+  const response = await next();
+  if (response.headers.get('content-type')?.startsWith('text/html')) {
+    response.headers.set('content-type', 'text/html; charset=utf-8');
+  }
+  return response;
 });
