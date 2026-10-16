@@ -96,7 +96,7 @@ export default function QuizResults({ quizId, songs, leaderboard }: Props) {
                         onClick={() => revealSong(song.id)}
                         className="btn-reveal"
                       >
-                        Avslöja avsändare
+                        Vem valde låten?
                       </button>
                     )}
                   </div>
@@ -122,12 +122,12 @@ export default function QuizResults({ quizId, songs, leaderboard }: Props) {
                   <div className="song-footer">
                     {isRevealed ? (
                       <div className="song-submitter revealed">
-                        Inskickad av:{' '}
+                        Låten valdes av:{' '}
                         <strong>{displayText(song.submitterName)}</strong>
                       </div>
                     ) : (
                       <div className="song-submitter hidden-submitter">
-                        Inskickad av: <span className="hidden-text">???</span>
+                        Låten valdes av: <span className="hidden-text">???</span>
                       </div>
                     )}
                     {isRevealed && song.ownGuess && (

@@ -184,7 +184,7 @@ export default function QuizPresentation({
       ? 'Börja genomgången →'
       : screen === 'song'
         ? !isRevealed
-          ? 'Avslöja avsändaren'
+          ? 'Vem valde låten?'
           : songIndex < submissions.length - 1
             ? 'Nästa låt →'
             : 'Till slutresultatet →'
@@ -280,7 +280,7 @@ export default function QuizPresentation({
             aria-atomic="true"
           >
             <span>
-              {isRevealed ? 'Inskickad av' : 'Vem skickade in låten?'}
+              {isRevealed ? 'Låten valdes av' : 'Vem valde låten?'}
             </span>
             <strong>
               {isRevealed ? displayText(current.userName) : 'Dags att avslöja.'}
@@ -326,8 +326,8 @@ export default function QuizPresentation({
                         </small>
                       </strong>
                     </div>
-                    {guess.isCorrect && isRevealed && (
-                      <span className="p-correct-label">✓ Rätt avsändare</span>
+                  {guess.isCorrect && isRevealed && guess.guessCount > 0 && (
+                      <span className="p-correct-label">✓ Rätt gissat!</span>
                     )}
                     {showGuessers && guess.guessers.length > 0 && (
                       <p className="p-guessers">

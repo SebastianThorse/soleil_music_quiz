@@ -8,7 +8,7 @@ Existing mojibake is repaired for display only. No stored quiz data is rewritten
 
 During the presentation, the song and neutral guess cards appear first. Hover or
 keyboard-focus a card to see who guessed, or use **Visa vem som gissade** to keep
-those names visible. Only **Avslöja avsändaren** reveals the submitter and marks the
+those names visible. Only **Vem valde låten?** reveals the submitter and marks the
 correct card. Global Space/Enter shortcuts do not reveal an unanswered song.
 After the reveal, use the next button, Space or the right arrow to continue.
 The left arrow goes back. A previously revealed song stays revealed when revisited.

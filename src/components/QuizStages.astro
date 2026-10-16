@@ -2,7 +2,7 @@
 interface Props { status: string; }
 const { status } = Astro.props;
 const current = status === 'open' ? 0 : status === 'guessing' ? 1 : 2;
-const steps = ['Lämna in låt', 'Gissa avsändare', 'Se resultat'];
+const steps = ['Lämna in låt', 'Vem valde vad?', 'Se resultat'];
 ---
 <ol class="quiz-stages" aria-label="Quizets steg">
   {steps.map((label, index) => (
