@@ -312,7 +312,50 @@
 }
 .p-results-heading {
   margin-bottom: 3vh;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  position: relative;
+  padding: 0.5rem 0;
 }
+.p-finale-symbol {
+  color: #f4c95d;
+  font-size: clamp(3rem, 5vw, 6rem);
+  line-height: 1;
+}
+.is-finale .p-results-heading {
+  background: radial-gradient(ellipse at 12% 50%, #f4c95d14, transparent 65%);
+}
+.p-medal-progress {
+  display: flex;
+  gap: 1rem;
+  margin-left: auto;
+}
+.p-medal-step {
+  color: var(--p-muted);
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+}
+.p-medal-step > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px dashed var(--p-line);
+  border-radius: 50%;
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+.p-medal-step small { font-size: 0.8rem; }
+.p-medal-step.is-visible > span:first-child {
+  background: var(--medal-color);
+  border: 1px solid var(--medal-color);
+  color: #111f2e;
+}
+.p-metal-1 { --medal-color: #f4c95d; --medal-surface: #443a22; }
+.p-metal-2 { --medal-color: #d8e4f2; --medal-surface: #304358; }
+.p-metal-3 { --medal-color: #ecb084; --medal-surface: #43332e; }
 .p-results-heading h1 {
   font-size: clamp(2rem, 3vw, 3.5rem);
   margin: 0.5rem 0;
@@ -331,6 +374,8 @@
   margin: 0;
 }
 .p-ranking li {
+  position: relative;
+  overflow: hidden;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -341,8 +386,52 @@
   background: var(--p-surface);
 }
 .p-ranking .p-medal {
-  border-color: #f4c95d;
-  background: #433d27;
+  border-color: var(--medal-color);
+  background: linear-gradient(115deg, var(--medal-surface), var(--p-surface));
+}
+.p-ranking .is-latest {
+  animation: p-medal-arrive 550ms ease-out both;
+}
+.p-rank-number {
+  display: grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  margin-bottom: 0.3rem;
+  line-height: 1;
+}
+.p-medal .p-rank-number {
+  color: #111f2e;
+  background: var(--medal-color);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 3px #ffffff38, 0 2px 8px #0003;
+}
+.p-winner-label {
+  display: block;
+  color: #f4c95d;
+  font-size: 0.8rem;
+  font-weight: 650;
+  margin-top: 0.45rem;
+}
+.p-score-track {
+  position: absolute;
+  height: 3px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #ffffff09;
+}
+.p-score-track > span {
+  display: block;
+  height: 100%;
+  background: var(--medal-color, #8aa7c0);
+}
+@keyframes p-medal-arrive {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .p-ranking .is-latest { animation: none; }
 }
 .p-rank {
   font-size: clamp(1.5rem, 2vw, 2.5rem);
@@ -404,6 +493,7 @@
   }
   .p-results-heading {
     margin-bottom: 1.5vh;
+    padding: 0.5rem 0;
   }
   .p-results-heading h1 {
     font-size: 2.5rem;
@@ -461,6 +551,9 @@
   .p-ranking {
     grid-template-columns: 1fr;
   }
+  .p-results-heading { flex-wrap: wrap; gap: 1rem; }
+  .p-finale-symbol { display: none; }
+  .p-medal-progress { margin-left: 0; }
   .p-section-heading {
     flex-wrap: wrap;
   }

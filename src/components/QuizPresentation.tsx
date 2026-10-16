@@ -98,6 +98,8 @@ export default function QuizPresentation({
   const resultSheets = presentationPages(leaderboard, medalCount);
   const guessPages = Math.ceil(guesses.length / PRESENTATION_PAGE_SIZE);
   const allMedals = medalCount >= medals.length;
+  const latestMedal = medals[medalCount - 1];
+  const winners = groups.find((group) => group.rank === 1);
 
   const moveSong = (index: number) => {
     setSongIndex(index);
@@ -355,35 +357,65 @@ export default function QuizPresentation({
       )}
       {screen === 'results' && (
         <section
-          className={`p-results ${resultSheets.length > 1 ? 'has-pages' : ''}`}
+          className={`p-results ${allMedals && winners ? 'is-finale' : ''} ${resultSheets.length > 1 ? 'has-pages' : ''}`}
         >
           <div className="p-results-heading">
-            <span className="p-eyebrow">
-              {allMedals ? 'Hela resultatet' : 'Spänningen stiger'}
+            <span className="p-finale-symbol" aria-hidden="true">
+              {allMedals && winners ? '★' : '♪'}
             </span>
-            <h1>
-              {allMedals ? 'Tack för den här fredagen.' : 'Vem tar hem det?'}
-            </h1>
-            <p>Topplistan avslöjas nedifrån. Lika poäng ger delad placering.</p>
+            <div>
+              <span className="p-eyebrow">
+                {allMedals ? 'Fredagslåten · Slutresultat' : 'Spänningen stiger'}
+              </span>
+              <h1>
+                {allMedals && winners
+                  ? winners.entries.length > 1
+                    ? 'En applåd för vinnarna!'
+                    : 'En applåd för vinnaren!'
+                  : allMedals
+                    ? 'Tack för den här fredagen.'
+                    : 'Vem tar hem det?'}
+              </h1>
+              <p>
+                {allMedals
+                  ? 'Snyggt spelat, allihop. Vi hörs nästa fredag!'
+                  : 'Topplistan avslöjas nedifrån. Lika poäng ger delad placering.'}
+              </p>
+            </div>
+            <div className="p-medal-progress" aria-label="Avslöjade pallplatser">
+              {[...medals].reverse().map((group) => (
+                <span key={group.rank} aria-label={`Plats ${group.rank}: ${medals.indexOf(group) < medalCount ? 'avslöjad' : 'väntar'}`} className={`p-medal-step p-metal-${group.rank} ${medals.indexOf(group) < medalCount ? 'is-visible' : ''}`}>
+                  <span aria-hidden="true">{group.rank}</span>
+                  <small>{medals.indexOf(group) < medalCount ? 'avslöjad' : 'väntar'}</small>
+                </span>
+              ))}
+            </div>
           </div>
           {resultSheets.length ? (
             <ol className="p-ranking" aria-label="Avslöjade placeringar">
               {(resultSheets[resultPage] ?? []).map((entry) => (
                 <li
-                  className={entry.rank <= 3 ? 'p-medal' : ''}
+                  className={`${entry.rank <= 3 ? `p-medal p-metal-${entry.rank}` : ''} ${entry.rank === latestMedal?.rank ? 'is-latest' : ''}`}
                   key={entry.userId}
                 >
                   <span className="p-rank">
-                    {entry.rank === 1 ? '★ ' : ''}
-                    {entry.rank}
+                    <span className="p-rank-number">{entry.rank}</span>
                     <small>{entry.shared ? 'delad plats' : 'plats'}</small>
                   </span>
                   <strong className="p-player-name">
                     {displayText(entry.userName)}
+                    {entry.rank === 1 && (
+                      <small className="p-winner-label">
+                        {entry.shared ? 'Delad vinnare' : 'Fredagens vinnare'}
+                      </small>
+                    )}
                   </strong>
                   <span className="p-score">
                     {entry.correctGuesses}
                     <small>av {entry.totalGuesses} rätt</small>
+                  </span>
+                  <span className="p-score-track" aria-hidden="true">
+                    <span style={{ width: `${entry.totalGuesses > 0 ? Math.min(100, Math.max(0, entry.correctGuesses / entry.totalGuesses * 100)) : 0}%` }} />
                   </span>
                 </li>
               ))}
