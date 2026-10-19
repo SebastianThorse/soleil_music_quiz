@@ -17,8 +17,10 @@ export function displayText(value: string | null | undefined): string {
     let result = '';
     for (let i = 0; i < characters.length; i++) {
       const first = byteOf(characters[i]);
+      // Two-byte repairs only start at Â/Ã (Latin-1 symbols and letters). Other leads
+      // are real capitals like Å, Ä and Ö, which are often followed by …, ’ or ”.
       const length =
-        first >= 194 && first <= 223
+        first === 194 || first === 195
           ? 2
           : first >= 224 && first <= 239
             ? 3

@@ -25,6 +25,19 @@ test('repairs Swedish mojibake without damaging existing Unicode or mixed text',
   assert.equal(displayText(null), '');
 });
 
+test('leaves correct capitals followed by typographic punctuation alone', () => {
+  for (const text of [
+    'HALLÅ…',
+    '”HÖ” sa han',
+    'SKÖ’RT',
+    'Ä–Ö—Å',
+    'Ö Ä',
+    'Ö™ Å•',
+  ])
+    assert.equal(displayText(text), text);
+  assert.equal(displayText('HALLÃ… på dig'), 'HALLÅ på dig');
+});
+
 test('ranking uses shared competition placements and never changes source order', () => {
   const entries = [3, 9, 5, 9, 0].map((correctGuesses, i) => ({
     userId: String(i),
@@ -64,6 +77,23 @@ test('Spotify embeds accept track links and fall back for search, short and othe
   assert.equal(getSpotifyTrackId('https://open.spotify.com/s/example'), null);
   assert.equal(getSpotifyTrackId('https://example.com/track/abc123'), null);
   assert.equal(getSpotifyTrackId('invalid'), null);
+  assert.equal(
+    getSpotifyTrackId('https://open.spotify.com/intl-pt-br/track/abc123'),
+    'abc123',
+  );
+  assert.equal(getSpotifyTrackId(' spotify:track:abc123 '), 'abc123');
+  assert.equal(
+    getSpotifyTrackId(
+      'https://open.spotify.com/album/xyz?highlight=spotify:track:abc123',
+    ),
+    'abc123',
+  );
+  assert.equal(
+    getSpotifyTrackId('https://play.spotify.com/track/abc123'),
+    'abc123',
+  );
+  assert.equal(getSpotifyTrackId('https://open.spotify.com/album/xyz'), null);
+  assert.equal(getSpotifyTrackId('https://spotify.link/abc123'), null);
 });
 
 test('15 players share one screen; only larger results paginate, including shared medals', () => {

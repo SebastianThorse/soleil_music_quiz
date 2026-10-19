@@ -92,11 +92,20 @@ if (Astro.request.method === 'POST') {
       if (!name || name.trim() === '') {
         error = 'Quiznamn krävs';
       } else {
+        // The form shows repaired text; a field left as displayed keeps its stored value.
+        const keepStored = (input: string, stored: string | null) =>
+          stored !== null &&
+          input.replace(/\r\n/g, '\n') ===
+            displayText(stored).trim().replace(/\r\n/g, '\n')
+            ? stored
+            : input;
+        const newDescription = description?.trim() || null;
         await db
           .update(quizzes)
           .set({
-            name: name.trim(),
-            description: description?.trim() || null,
+            name: keepStored(name.trim(), quiz.name),
+            description:
+              newDescription && keepStored(newDescription, quiz.description),
           })
           .where(eq(quizzes.id, quiz.id));
 

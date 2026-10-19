@@ -23,12 +23,21 @@ export function buildLeaderboardGroups(entries: LeaderboardEntry[]) {
 
 export function getSpotifyTrackId(link: string): string | null {
   try {
-    const url = new URL(link);
-    if (url.hostname !== 'open.spotify.com') return null;
+    const uri = /^spotify:track:([a-zA-Z0-9]+)$/;
+    const trimmed = link.trim();
+    const fromUri = trimmed.match(uri)?.[1];
+    if (fromUri) return fromUri;
+    const url = new URL(trimmed);
+    if (!['open.spotify.com', 'play.spotify.com'].includes(url.hostname))
+      return null;
+    // Album links can point at one track: /album/…?highlight=spotify:track:ID
+    const highlighted = url.searchParams.get('highlight')?.match(uri)?.[1];
     return (
       url.pathname.match(
-        /^\/(?:intl-[a-z]+\/)?(?:embed\/)?track\/([a-zA-Z0-9]+)\/?$/,
-      )?.[1] ?? null
+        /^\/(?:intl-[a-z]+(?:-[a-z]+)*\/)?(?:embed\/)?track\/([a-zA-Z0-9]+)\/?$/i,
+      )?.[1] ??
+      highlighted ??
+      null
     );
   } catch {
     return null;
