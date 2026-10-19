@@ -1,5 +1,12 @@
-// src/components/QuizPresentation.tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { displayText } from '../lib/display-text';
+import {
+  buildLeaderboardGroups,
+  getSpotifyTrackId,
+  presentationPages,
+  PRESENTATION_PAGE_SIZE,
+  type LeaderboardEntry,
+} from '../lib/quiz-display';
 
 interface Participant {
   participantId: string;
@@ -8,7 +15,6 @@ interface Participant {
   guessers: string[];
   isCorrect: boolean;
 }
-
 interface Submission {
   id: number;
   songLink: string;
@@ -18,770 +24,441 @@ interface Submission {
   userName: string;
   guessDistribution: Participant[];
 }
-
-interface LeaderboardEntry {
-  userId: string;
-  userName: string;
-  correctGuesses: number;
-  totalGuesses: number;
-}
-
-interface LeaderboardGroup {
-  rank: number;
-  entries: LeaderboardEntry[];
-}
-
 interface Props {
+  quizId: number;
   quizName: string;
   submissions: Submission[];
   leaderboard: LeaderboardEntry[];
 }
 
-const getSpotifyTrackId = (link: string): string | null => {
-  try {
-    const match = link.match(/track\/([a-zA-Z0-9]+)/);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
-};
-
-// Groups tied scores into shared placements (competition ranking: 1, 2, 2, 4, ...)
-const buildLeaderboardGroups = (
-  entries: LeaderboardEntry[],
-): LeaderboardGroup[] => {
-  const sorted = [...entries].sort(
-    (a, b) => b.correctGuesses - a.correctGuesses,
+function Pagination({
+  page,
+  pages,
+  label,
+  onChange,
+}: {
+  page: number;
+  pages: number;
+  label: string;
+  onChange: (page: number) => void;
+}) {
+  if (pages <= 1) return null;
+  return (
+    <nav className="p-pagination" aria-label={label}>
+      <button
+        className="p-quiet"
+        disabled={page === 0}
+        onClick={() => onChange(page - 1)}
+      >
+        ← Föregående
+      </button>
+      <span>
+        Sida {page + 1} av {pages}
+      </span>
+      <button
+        className="p-quiet"
+        disabled={page + 1 >= pages}
+        onClick={() => onChange(page + 1)}
+      >
+        Nästa sida →
+      </button>
+    </nav>
   );
-  const groups: LeaderboardGroup[] = [];
-
-  sorted.forEach((entry, index) => {
-    const previousGroup = groups[groups.length - 1];
-    if (previousGroup && previousGroup.entries[0].correctGuesses === entry.correctGuesses) {
-      previousGroup.entries.push(entry);
-    } else {
-      groups.push({ rank: index + 1, entries: [entry] });
-    }
-  });
-
-  return groups;
-};
-
-const getMedal = (rank: number): string => {
-  if (rank === 1) return '🥇';
-  if (rank === 2) return '🥈';
-  if (rank === 3) return '🥉';
-  return '';
-};
-
-// Quiz names can arrive as UTF-8 bytes decoded as Latin-1 (for example, "Ã¶").
-const getDisplayQuizName = (name: string): string => {
-  try {
-    const bytes = Uint8Array.from(name, (character) => character.charCodeAt(0));
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    return name;
-  }
-};
+}
 
 export default function QuizPresentation({
+  quizId,
   quizName,
   submissions,
   leaderboard,
 }: Props) {
-  const [currentScreen, setCurrentScreen] = useState<
-    'start' | 'song' | 'results'
-  >('start');
-  const [currentSongIndex, setCurrentSongIndex] = useState(0);
-  const [revealedSongs, setRevealedSongs] = useState<Set<number>>(new Set());
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [revealedMedalCount, setRevealedMedalCount] = useState(0);
+  const [screen, setScreen] = useState<'start' | 'song' | 'results'>('start');
+  const [songIndex, setSongIndex] = useState(0);
+  const [revealed, setRevealed] = useState<Set<number>>(new Set());
+  const [guessPage, setGuessPage] = useState(0);
+  const [resultPage, setResultPage] = useState(0);
+  const [medalCount, setMedalCount] = useState(0);
+  const [showGuessers, setShowGuessers] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [notice, setNotice] = useState('');
+  const current = submissions[songIndex];
+  const isRevealed = current ? revealed.has(current.id) : false;
+  const spotifyId = current ? getSpotifyTrackId(current.songLink) : null;
+  const guesses = current
+    ? [...current.guessDistribution]
+        .filter((g) => g.guessCount > 0 || (g.isCorrect && isRevealed))
+        .sort(
+          (a, b) =>
+            b.guessCount - a.guessCount ||
+            a.participantName.localeCompare(b.participantName, 'sv'),
+        )
+    : [];
+  const groups = [...buildLeaderboardGroups(leaderboard)].reverse();
+  const medals = groups.filter((g) => g.rank <= 3);
+  const resultSheets = presentationPages(leaderboard, medalCount);
+  const guessPages = Math.ceil(guesses.length / PRESENTATION_PAGE_SIZE);
+  const allMedals = medalCount >= medals.length;
+  const latestMedal = medals[medalCount - 1];
+  const winners = groups.find((group) => group.rank === 1);
 
-  const startPresentation = () => {
-    setCurrentScreen('song');
-    setCurrentSongIndex(0);
+  const moveSong = (index: number) => {
+    setSongIndex(index);
+    setGuessPage(0);
+    setShowGuessers(false);
+    setScreen('song');
   };
-
-  const revealAnswer = () => {
-    setRevealedSongs((prev) => new Set(prev).add(currentSongIndex));
+  const previous = () => {
+    if (screen === 'results' && submissions.length)
+      moveSong(submissions.length - 1);
+    else if (screen === 'song' && songIndex > 0) moveSong(songIndex - 1);
+    else setScreen('start');
   };
-
-  const revealNextMedal = () => {
-    setRevealedMedalCount((prev) => prev + 1);
-  };
-
-  const nextSong = () => {
-    if (currentSongIndex < submissions.length - 1) {
-      setCurrentSongIndex(currentSongIndex + 1);
-    } else {
-      setCurrentScreen('results');
-      // Start revealing leaderboard entries
-      setTimeout(() => setShowLeaderboard(true), 300);
+  const advance = () => {
+    if (screen === 'start') {
+      if (submissions.length) moveSong(0);
+      else setScreen('results');
+    } else if (screen === 'song' && current) {
+      if (!isRevealed) setRevealed((prev) => new Set(prev).add(current.id));
+      else if (songIndex < submissions.length - 1) moveSong(songIndex + 1);
+      else {
+        setResultPage(0);
+        setScreen('results');
+      }
+    } else if (screen === 'results' && !allMedals) {
+      const visibleCount = resultSheets.flat().length;
+      setResultPage(Math.floor(visibleCount / PRESENTATION_PAGE_SIZE));
+      setMedalCount((count) => count + 1);
     }
   };
-
-  const currentSubmission = submissions[currentSongIndex];
-  const isRevealed = revealedSongs.has(currentSongIndex);
-  const displayQuizName = getDisplayQuizName(quizName);
-  const spotifyId = currentSubmission
-    ? getSpotifyTrackId(currentSubmission.songLink)
-    : null;
-
-  // Groups with the same score share a placement (e.g. joint 8th place).
-  // Sorted worst-to-best so medals can be revealed one at a time, gold last.
-  const leaderboardGroups = [...buildLeaderboardGroups(leaderboard)].reverse();
-  const nonMedalGroups = leaderboardGroups.filter((group) => group.rank > 3);
-  const medalGroups = leaderboardGroups.filter((group) => group.rank <= 3);
-  const visibleMedalGroups = medalGroups.slice(0, revealedMedalCount);
-  const allMedalsRevealed = revealedMedalCount >= medalGroups.length;
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+      setNotice('');
+    } catch {
+      setNotice(
+        'Helskärm kunde inte startas. Du kan använda webbläsarens helskärmsläge.',
+      );
+    }
+  };
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [screen, songIndex, resultPage]);
+  useEffect(() => {
+    const sync = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.repeat)
+        return;
+      const target = event.target as HTMLElement;
+      if (target?.closest('input, select, textarea, [contenteditable="true"]'))
+        return;
+      if (
+        (event.key === ' ' || event.key === 'Enter') &&
+        target?.closest('button, a')
+      )
+        return;
+      if (event.key === ' ' || event.key === 'Enter') {
+        // Only activation of the actual reveal button may disclose an answer.
+        if (screen === 'song' && !isRevealed) return;
+        event.preventDefault();
+        advance();
+      } else if (
+        event.key === 'ArrowRight' &&
+        screen === 'song' &&
+        isRevealed
+      ) {
+        event.preventDefault();
+        advance();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        previous();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+  const actionLabel =
+    screen === 'start'
+      ? 'Börja genomgången →'
+      : screen === 'song'
+        ? !isRevealed
+          ? 'Vem valde låten?'
+          : songIndex < submissions.length - 1
+            ? 'Nästa låt →'
+            : 'Till slutresultatet →'
+        : !allMedals
+          ? `Avslöja ${medals[medalCount].rank === 1 ? (medals[medalCount].entries.length > 1 ? 'vinnarna' : 'vinnaren') : 'plats ' + medals[medalCount].rank} →`
+          : '';
 
   return (
-    <div className="presentation-container">
-      {/* Start Screen */}
-      {currentScreen === 'start' && (
-        <div className="screen active">
-          <div className="start-content">
-            <h1>{displayQuizName}</h1>
-            <h2>Presentationsläge</h2>
-            <p className="subtitle">
-              Gå igenom varje låt och se vem som gissade vad
-            </p>
+    <div className="presentation">
+      <header className="p-header">
+        <a className="p-brand" href={`/quiz/${quizId}/results`}>
+          <span aria-hidden="true">♪</span> Fredagslåten
+        </a>
+        <p>{displayText(quizName)}</p>
+        <button className="p-quiet" onClick={toggleFullscreen}>
+          {fullscreen ? 'Lämna helskärm' : 'Helskärm'}
+        </button>
+      </header>
+      {notice && (
+        <p role="status" className="p-notice">
+          {notice}
+        </p>
+      )}
+      {screen === 'start' && (
+        <section className="p-start">
+          <span className="p-eyebrow">Soleil · Resultatgenomgång</span>
+          <h1>
+            Vems låt
+            <br />
+            var det?
+          </h1>
+          <p>
+            {submissions.length} låtar. {leaderboard.length} deltagare som
+            gissade.
+            <br />
+            Nu får vi veta vem som valde vad.
+          </p>
+          {!submissions.length && (
+            <p>Inga låtar har lämnats in i det här quizet.</p>
+          )}
+          <button className="p-primary" onClick={advance}>
+            {actionLabel}
+          </button>
+          <p className="p-hint">
+            Avslöja med knappen. → går vidare efter avslöjandet. ← går tillbaka.
+          </p>
+        </section>
+      )}
+      {screen === 'song' && current && (
+        <section
+          className={`p-song ${guessPages > 1 ? 'has-pages' : ''}`}
+          aria-label={`Låt ${songIndex + 1} av ${submissions.length}`}
+        >
+          <div className="p-song-heading">
+            <div>
+              <span className="p-eyebrow">
+                Låt {String(songIndex + 1).padStart(2, '0')} /{' '}
+                {String(submissions.length).padStart(2, '0')}
+              </span>
+              <h1>
+                {displayText(current.songTitle) || `Låt ${songIndex + 1}`}
+              </h1>
+              <p className="p-artist">
+                {displayText(current.artist) ||
+                  'Lyssna på låten och se gissningarna nedan.'}
+              </p>
+            </div>
+            <div className="p-player">
+              {spotifyId ? (
+                <iframe
+                  title={`Spotify: ${displayText(current.songTitle) || 'Låt ' + (songIndex + 1)}`}
+                  src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator`}
+                  width="100%"
+                  height="152"
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <a
+                  className="p-secondary"
+                  href={current.songLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Öppna låten ↗
+                </a>
+              )}
+            </div>
+          </div>
+          <div
+            className={`p-answer ${isRevealed ? 'is-revealed' : ''}`}
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <span>
+              {isRevealed ? 'Låten valdes av' : 'Vem valde låten?'}
+            </span>
+            <strong>
+              {isRevealed ? displayText(current.userName) : 'Dags att avslöja.'}
+            </strong>
+          </div>
+          <div className="p-section-heading">
+            <h2>
+              Så gissade ni <small>Egna rätta gissningar är borträknade</small>
+            </h2>
             <button
-              onClick={startPresentation}
-              className="btn-primary btn-large"
+              className="p-quiet"
+              aria-pressed={showGuessers}
+              onClick={() => setShowGuessers((v) => !v)}
             >
-              Starta presentation
+              {showGuessers
+                ? 'Dölj namn på de som gissade'
+                : 'Visa vem som gissade'}
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Song Screen */}
-      {currentScreen === 'song' && currentSubmission && (
-        <div className="screen active song-screen">
-          <div className="song-content">
-            <div className="song-info">
-              {currentSubmission.songTitle && (
-                <h2 className="song-title">{currentSubmission.songTitle}</h2>
-              )}
-              {currentSubmission.artist && (
-                <p className="artist">{currentSubmission.artist}</p>
-              )}
-            </div>
-
-            {/* Spotify Embed */}
-            {spotifyId && (
-              <div className="spotify-embed-row">
-                <div className="spotify-embed">
-                  <iframe
-                    style={{ borderRadius: '12px' }}
-                    src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator`}
-                    width="100%"
-                    height="152"
-                    frameBorder="0"
-                    allowFullScreen
-                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                    loading="lazy"
-                  ></iframe>
-                </div>
-                <div className="song-number">
-                  Låt {currentSongIndex + 1} av {submissions.length}
-                </div>
-              </div>
-            )}
-
-            {/* Guess Visualization */}
-            <div className="guess-grid">
-              {currentSubmission.guessDistribution
-                .sort((a, b) => b.guessCount - a.guessCount) // Sort by most guesses first
-                // Always show the correct submitter once revealed, even with 0 guesses
-                .filter(
-                  (guess) => guess.guessCount > 0 || (guess.isCorrect && isRevealed),
+          {guesses.length ? (
+            <div
+              className={`p-guesses ${guesses.length <= 4 ? 'is-sparse' : guesses.length > 9 ? 'is-compact' : ''} ${showGuessers ? 'with-guessers' : ''}`}
+            >
+              {guesses
+                .slice(
+                  guessPage * PRESENTATION_PAGE_SIZE,
+                  (guessPage + 1) * PRESENTATION_PAGE_SIZE,
                 )
-                .map((guess) => {
-                  const maxGuesses = Math.max(
-                    ...currentSubmission.guessDistribution.map(
-                      (g) => g.guessCount,
-                    ),
-                    1,
-                  );
-                  const sizeMultiplier =
-                    1 + (guess.guessCount / maxGuesses) * 2;
-                  const fontSize = Math.min(1.2 * sizeMultiplier, 2.5);
-
-                  return (
-                    <div
-                      key={guess.participantId}
-                      className={`guess-box ${
-                        guess.isCorrect && isRevealed
-                          ? 'correct-answer revealed'
-                          : ''
-                      }`}
-                      style={{ fontSize: `${fontSize}rem` }}
-                    >
-                      <div className="guess-count">
+                .map((guess) => (
+                  <div
+                    className={`p-guess ${guess.isCorrect && isRevealed ? 'is-correct' : ''}`}
+                    key={guess.participantId}
+                    tabIndex={showGuessers ? undefined : 0}
+                    role="group"
+                    aria-label={`${displayText(guess.participantName)}: ${guess.guessCount} gissningar`}
+                  >
+                    <div className="p-guess-top">
+                      <span>{displayText(guess.participantName)}</span>
+                      <strong>
                         {guess.guessCount}
-                      </div>
-                      <div className="guess-name">{guess.participantName}</div>
-
-                      {/* Tooltip - only show if there are guessers */}
-                      {guess.guessers.length > 0 && (
-                        <div className="guess-tooltip">
-                          <div className="tooltip-title">Gissade av:</div>
-                          {guess.guessers.map((guesser, idx) => (
-                            <div key={idx} className="tooltip-name">
-                              {guesser}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                        <small>
+                          {guess.guessCount === 1 ? 'gissning' : 'gissningar'}
+                        </small>
+                      </strong>
                     </div>
-                  );
-                })}
-            </div>
-
-            <div className="action-buttons">
-              {!isRevealed ? (
-                <button
-                  onClick={revealAnswer}
-                  className="btn-primary btn-large"
-                >
-                  Avslöja vem som skickade in
-                </button>
-              ) : (
-                <button onClick={nextSong} className="btn-secondary btn-large">
-                  {currentSongIndex < submissions.length - 1
-                    ? 'Nästa låt →'
-                    : 'Se slutresultat →'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Results Screen */}
-      {currentScreen === 'results' && (
-        <div className="screen active results-screen">
-          <div className="results-content">
-            <h1>Slutresultat</h1>
-            <h2>{displayQuizName}</h2>
-
-            <div className="leaderboard">
-              {nonMedalGroups.map((group) => (
-                <div
-                  key={group.rank}
-                  className={`leaderboard-entry ${showLeaderboard ? 'reveal' : 'hidden'}`}
-                >
-                  <div className="placement">
-                    #{group.rank}
-                    {group.entries.length > 1 && (
-                      <span className="shared-badge">delad</span>
+                  {guess.isCorrect && isRevealed && guess.guessCount > 0 && (
+                      <span className="p-correct-label">✓ Rätt gissat!</span>
+                    )}
+                    {showGuessers && guess.guessers.length > 0 && (
+                      <p className="p-guessers">
+                        {guess.guessers.map(displayText).join(', ')}
+                      </p>
+                    )}
+                    {!showGuessers && guess.guessers.length > 0 && (
+                      <div className="p-hover-guessers">
+                        Gissade av: {guess.guessers.map(displayText).join(', ')}
+                      </div>
                     )}
                   </div>
-                  <div className="player-names">
-                    {group.entries.map((entry) => (
-                      <div key={entry.userId} className="player-name">
-                        {entry.userName}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="score">
-                    <span className="correct">
-                      {group.entries[0].correctGuesses}
-                    </span>
-                    <span className="total">
-                      / {group.entries[0].totalGuesses}
-                    </span>
-                  </div>
-                </div>
-              ))}
-
-              {visibleMedalGroups.map((group, groupIndex) => (
-                <div
-                  key={group.rank}
-                  className="leaderboard-entry reveal medal-reveal"
-                  style={{ animationDelay: `${groupIndex * 0.2}s` }}
-                >
-                  <div className="placement">
-                    {getMedal(group.rank)}
-                    {group.entries.length > 1 && (
-                      <span className="shared-badge">delad</span>
-                    )}
-                  </div>
-                  <div className="player-names">
-                    {group.entries.map((entry) => (
-                      <div key={entry.userId} className="player-name">
-                        {entry.userName}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="score">
-                    <span className="correct">
-                      {group.entries[0].correctGuesses}
-                    </span>
-                    <span className="total">
-                      / {group.entries[0].totalGuesses}
-                    </span>
-                  </div>
-                </div>
+                ))}
+            </div>
+          ) : (
+            <p className="p-empty">Inga gissningar på den här låten ännu.</p>
+          )}
+          <Pagination
+            page={guessPage}
+            pages={guessPages}
+            label="Sidor med gissningar"
+            onChange={setGuessPage}
+          />
+        </section>
+      )}
+      {screen === 'results' && (
+        <section
+          className={`p-results ${allMedals && winners ? 'is-finale' : ''} ${resultSheets.length > 1 ? 'has-pages' : ''}`}
+        >
+          <div className="p-results-heading">
+            <span className="p-finale-symbol" aria-hidden="true">
+              {allMedals && winners ? '★' : '♪'}
+            </span>
+            <div>
+              <span className="p-eyebrow">
+                {allMedals ? 'Fredagslåten · Slutresultat' : 'Spänningen stiger'}
+              </span>
+              <h1>
+                {allMedals && winners
+                  ? winners.entries.length > 1
+                    ? 'En applåd för vinnarna!'
+                    : 'En applåd för vinnaren!'
+                  : allMedals
+                    ? 'Tack för den här fredagen.'
+                    : 'Vem tar hem det?'}
+              </h1>
+              <p>
+                {allMedals
+                  ? 'Snyggt spelat, allihop. Vi hörs nästa fredag!'
+                  : 'Topplistan avslöjas nedifrån. Lika poäng ger delad placering.'}
+              </p>
+            </div>
+            <div className="p-medal-progress" aria-label="Avslöjade pallplatser">
+              {[...medals].reverse().map((group) => (
+                <span key={group.rank} aria-label={`Plats ${group.rank}: ${medals.indexOf(group) < medalCount ? 'avslöjad' : 'väntar'}`} className={`p-medal-step p-metal-${group.rank} ${medals.indexOf(group) < medalCount ? 'is-visible' : ''}`}>
+                  <span aria-hidden="true">{group.rank}</span>
+                  <small>{medals.indexOf(group) < medalCount ? 'avslöjad' : 'väntar'}</small>
+                </span>
               ))}
             </div>
-
-            {showLeaderboard && !allMedalsRevealed && (
-              <button
-                onClick={revealNextMedal}
-                className="btn-primary btn-large"
-              >
-                Visa nästa placering →
-              </button>
-            )}
-
-            {allMedalsRevealed && (
-              <a
-                href={`/quiz/${submissions[0]?.id}`}
-                className="btn-primary btn-large"
-              >
-                Tillbaka till quizet
-              </a>
-            )}
           </div>
-        </div>
+          {resultSheets.length ? (
+            <ol className="p-ranking" aria-label="Avslöjade placeringar">
+              {(resultSheets[resultPage] ?? []).map((entry) => (
+                <li
+                  className={`${entry.rank <= 3 ? `p-medal p-metal-${entry.rank}` : ''} ${entry.rank === latestMedal?.rank ? 'is-latest' : ''}`}
+                  key={entry.userId}
+                >
+                  <span className="p-rank">
+                    <span className="p-rank-number">{entry.rank}</span>
+                    <small>{entry.shared ? 'delad plats' : 'plats'}</small>
+                  </span>
+                  <strong className="p-player-name">
+                    {displayText(entry.userName)}
+                    {entry.rank === 1 && (
+                      <small className="p-winner-label">
+                        {entry.shared ? 'Delad vinnare' : 'Fredagens vinnare'}
+                      </small>
+                    )}
+                  </strong>
+                  <span className="p-score">
+                    {entry.correctGuesses}
+                    <small>av {entry.totalGuesses} rätt</small>
+                  </span>
+                  <span className="p-score-track" aria-hidden="true">
+                    <span style={{ width: `${entry.totalGuesses > 0 ? Math.min(100, Math.max(0, entry.correctGuesses / entry.totalGuesses * 100)) : 0}%` }} />
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="p-empty">
+              {leaderboard.length
+                ? 'Bara pallplatser kvar. Avslöja den första nedan.'
+                : 'Inga gissningar har sparats i det här quizet.'}
+            </p>
+          )}
+          <Pagination
+            page={resultPage}
+            pages={resultSheets.length}
+            label="Sidor med resultat"
+            onChange={setResultPage}
+          />
+        </section>
       )}
-
-      <style>{`
-        .presentation-container {
-          min-height: 100vh;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          position: relative;
-        }
-
-        .screen {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-          padding: 2rem;
-        }
-
-        .screen.active {
-          animation: fadeIn 0.5s ease-in;
-        }
-
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-
-        /* Start Screen */
-        .start-content {
-          text-align: center;
-          color: white;
-          max-width: 600px;
-        }
-
-        .start-content h1 {
-          font-size: 3rem;
-          margin-bottom: 1rem;
-        }
-
-        .start-content h2 {
-          font-size: 2rem;
-          margin-bottom: 0.5rem;
-          opacity: 0.9;
-        }
-
-        .start-content .subtitle {
-          font-size: 1.25rem;
-          opacity: 0.8;
-          margin-bottom: 3rem;
-        }
-
-        /* Song Screen */
-        .song-screen {
-          flex-direction: column;
-        }
-
-        .song-content {
-          width: 100%;
-          max-width: 1200px;
-          margin: 0 auto;
-        }
-
-        .song-number {
-          color: white;
-          opacity: 0.9;
-          font-size: 2rem;
-          font-weight: 700;
-          white-space: nowrap;
-        }
-
-        .song-info {
-          text-align: center;
-          color: white;
-          margin-bottom: 2rem;
-        }
-
-        .song-title {
-          font-size: 2.5rem;
-          margin: 0 0 0.5rem 0;
-        }
-
-        .artist {
-          font-size: 1.5rem;
-          opacity: 0.9;
-          margin: 0;
-        }
-
-        .spotify-embed-row {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 2rem;
-          margin-bottom: 3rem;
-        }
-
-        .spotify-embed {
-          max-width: 500px;
-          width: 100%;
-        }
-
-        .guesses-title {
-          color: white;
-          text-align: center;
-          font-size: 1.5rem;
-          margin-bottom: 2rem;
-        }
-
-        .guess-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 1.5rem;
-          margin-bottom: 3rem;
-          max-width: 1000px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        .guess-box {
-          background: rgba(255, 255, 255, 0.95);
-          border-radius: 1rem;
-          text-align: center;
-          transition: all 0.3s;
-          cursor: pointer;
-          position: relative;
-          min-height: 120px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-
-        .guess-box:hover {
-          transform: translateY(-5px);
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-        }
-
-        .guess-box.correct-answer {
-          background-color: #059669;
-          color: white;
-        }
-
-        .guess-box.correct-answer.revealed {
-          animation: correctReveal 0.6s ease-out;
-        }
-
-        @keyframes correctReveal {
-          0% {
-            transform: scale(0.8);
-            opacity: 0;
-          }
-          50% {
-            transform: scale(1.1);
-          }
-          100% {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-
-        .guess-box.hidden {
-          display: none;
-        }
-
-        .guess-name {
-          font-weight: 700;
-          font-size: 2rem;
-          margin-bottom: 0.5rem;
-          margin-top: 0.5rem;
-        }
-
-        .guess-count {
-          font-size: 3rem;
-          font-weight: 700;
-          opacity: 0.8;
-          width: 100%;
-          border-bottom: 2px solid black;
-          border-radius: 1rem 1rem 0 0;
-          background-color: #C8A2C8; /* lilac */
-        }
-
-        .guess-box.correct-answer .guess-count {
-          opacity: 1;
-          font-weight: 600;
-          background-color: #059669;
-        }
-
-        .guess-box.correct-answer .guess-count::before {
-          content: "✓ ";
-          font-size: 3rem;
-        }
-
-        /* Tooltip */
-        .guess-tooltip {
-          position: absolute;
-          bottom: 100%;
-          left: 50%;
-          transform: translateX(-50%) translateY(-10px);
-          background: rgba(0, 0, 0, 0.9);
-          color: white;
-          padding: 0.75rem 1rem;
-          border-radius: 0.5rem;
-          font-size: 0.875rem;
-          white-space: nowrap;
-          opacity: 0;
-          pointer-events: none;
-          transition: opacity 0.2s, transform 0.2s;
-          z-index: 10;
-        }
-
-        .guess-box:hover .guess-tooltip {
-          opacity: 1;
-          transform: translateX(-50%) translateY(-5px);
-        }
-
-        .tooltip-title {
-          font-weight: 600;
-          font-size: 1.5rem;
-          opacity: 0.8;
-          margin-bottom: 0.5rem;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-          padding-bottom: 0.25rem;
-        }
-
-        .tooltip-name {
-          font-size: 2rem;
-          padding: 0.25rem 0;
-        }
-
-        /* Action Buttons */
-        .action-buttons {
-          display: flex;
-          gap: 1rem;
-          justify-content: center;
-        }
-
-        .btn-primary,
-        .btn-secondary {
-          padding: 0.75rem 1.5rem;
-          border-radius: 0.5rem;
-          font-weight: 600;
-          text-decoration: none;
-          transition: all 0.2s;
-          border: none;
-          cursor: pointer;
-          font-size: 1rem;
-        }
-
-        .btn-primary {
-          background-color: white;
-          color: #667eea;
-        }
-
-        .btn-primary:hover {
-          transform: scale(1.05);
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
-
-        .btn-secondary {
-          background-color: rgba(255, 255, 255, 0.2);
-          color: white;
-          border: 2px solid white;
-        }
-
-        .btn-secondary:hover {
-          background-color: rgba(255, 255, 255, 0.3);
-        }
-
-        .btn-large {
-          padding: 1rem 2rem;
-          font-size: 1.25rem;
-        }
-
-        /* Results Screen */
-        .results-content {
-          width: 100%;
-          max-width: 800px;
-          text-align: center;
-          color: white;
-        }
-
-        .results-content h1 {
-          font-size: 3rem;
-          margin-bottom: 0.5rem;
-        }
-
-        .results-content h2 {
-          font-size: 1.5rem;
-          opacity: 0.9;
-          margin-bottom: 3rem;
-        }
-
-        .leaderboard {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 1rem;
-          padding: 2rem;
-          margin-bottom: 3rem;
-        }
-
-        .leaderboard-entry {
-          display: flex;
-          align-items: center;
-          gap: 2rem;
-          padding: 1.5rem;
-          background: rgba(255, 255, 255, 0.95);
-          border-radius: 0.75rem;
-          margin-bottom: 1rem;
-          color: #1f2937;
-          opacity: 0;
-          transform: translateX(-50px);
-        }
-
-        .leaderboard-entry:last-child {
-          margin-bottom: 0;
-        }
-
-        .leaderboard-entry.reveal {
-          animation: slideIn 0.5s ease-out forwards;
-        }
-
-        .leaderboard-entry.hidden {
-          opacity: 0;
-        }
-
-        .leaderboard-entry.medal-reveal {
-          animation: slideIn 0.5s ease-out forwards;
-        }
-
-        @keyframes slideIn {
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-
-        .player-names {
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-          flex: 1;
-        }
-
-        .shared-badge {
-          display: block;
-          font-size: 0.75rem;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          color: #6b7280;
-          margin-top: 0.25rem;
-        }
-
-        .placement {
-          font-size: 2rem;
-          font-weight: 700;
-          min-width: 60px;
-        }
-
-        .player-name {
-          flex: 1;
-          text-align: left;
-          font-size: 1.5rem;
-          font-weight: 600;
-        }
-
-        .score {
-          font-size: 1.5rem;
-          font-weight: 700;
-        }
-
-        .score .correct {
-          color: #10b981;
-          font-size: 2rem;
-        }
-
-        .score .total {
-          color: #6b7280;
-          font-size: 1.25rem;
-        }
-
-        @media (max-width: 768px) {
-          .guess-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-          }
-
-          .spotify-embed-row {
-            flex-direction: column;
-            gap: 1rem;
-          }
-
-          .song-number {
-            font-size: 1.5rem;
-          }
-
-          .song-title {
-            font-size: 1.75rem;
-          }
-
-          .artist {
-            font-size: 1.25rem;
-          }
-
-          .start-content h1 {
-            font-size: 2rem;
-          }
-
-          .results-content h1 {
-            font-size: 2rem;
-          }
-
-          .leaderboard-entry {
-            gap: 1rem;
-            padding: 1rem;
-          }
-
-          .placement {
-            font-size: 1.5rem;
-            min-width: 50px;
-          }
-
-          .player-name {
-            font-size: 1.125rem;
-          }
-
-          .score {
-            font-size: 1.125rem;
-          }
-
-          .score .correct {
-            font-size: 1.5rem;
-          }
-        }
-      `}</style>
+      {screen !== 'start' && (
+        <footer className="p-controls">
+          <button className="p-secondary" onClick={previous}>
+            ←{' '}
+            {screen === 'song' && songIndex === 0
+              ? 'Till starten'
+              : 'Föregående låt'}
+          </button>
+          <span className="p-hint">
+            {screen === 'song' && !isRevealed
+              ? 'Hovra för att se vem som gissade · Avslöja med knappen'
+              : 'Mellanslag: gå vidare · ← tillbaka'}
+          </span>
+          {actionLabel ? (
+            <button className="p-primary" onClick={advance}>
+              {actionLabel}
+            </button>
+          ) : (
+            <a className="p-primary" href={`/quiz/${quizId}/results`}>
+              Tillbaka till resultaten →
+            </a>
+          )}
+        </footer>
+      )}
     </div>
   );
 }

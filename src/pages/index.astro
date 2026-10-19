@@ -1,6 +1,7 @@
 ---
 // src/pages/index.astro
 import Layout from '../layouts/Layout.astro';
+import { displayText } from '../lib/display-text';
 import { db } from '../lib/db'; // Your Drizzle db instance
 import {
   quizzes,
@@ -107,11 +108,11 @@ const getStatusColor = (status: string) => {
 <Layout>
   <div class="container">
     <header class="hero">
-      <h1>Välkommen till Soleil Musikquiz! 🎵</h1>
+      <h1>Fredag låter bättre tillsammans.</h1>
       {
         user ? (
           <p class="subtitle">
-            Hej {user.name}! Redo att testa dina musikkunskaper?
+            Hej {displayText(user.name)}! Redo att testa dina musikkunskaper?
           </p>
         ) : (
           <p class="subtitle">Logga in för att delta i quizen</p>
@@ -124,7 +125,7 @@ const getStatusColor = (status: string) => {
         <>
           <section class="quiz-section">
             <div class="section-header">
-              <h2>Aktiva Quiz</h2>
+              <h2>På gång</h2>
               <a href="/quiz/new" class="btn-primary">
                 + Skapa Nytt Quiz
               </a>
@@ -135,7 +136,7 @@ const getStatusColor = (status: string) => {
                 {activeQuizzes.map((quiz: any) => (
                   <a href={`/quiz/${quiz.id}`} class="quiz-card">
                     <div class="quiz-card-header">
-                      <h3>{quiz.name}</h3>
+                      <h3>{displayText(quiz.name)}</h3>
                       <span
                         class="status-badge"
                         style={`background-color: ${getStatusColor(quiz.status)}`}
@@ -145,7 +146,7 @@ const getStatusColor = (status: string) => {
                     </div>
 
                     {quiz.description && (
-                      <p class="quiz-description">{quiz.description}</p>
+                      <p class="quiz-description">{displayText(quiz.description)}</p>
                     )}
 
                     <div class="quiz-stats">
@@ -192,7 +193,7 @@ const getStatusColor = (status: string) => {
           </section>
 
           <section class="quiz-section">
-            <h2>Avslutade Quiz</h2>
+            <h2>Tidigare fredagar</h2>
 
             {completedQuizzes.length > 0 ? (
               <div class="quiz-grid">
@@ -202,7 +203,7 @@ const getStatusColor = (status: string) => {
                     class="quiz-card completed"
                   >
                     <div class="quiz-card-header">
-                      <h3>{quiz.name}</h3>
+                      <h3>{displayText(quiz.name)}</h3>
                       <span
                         class="status-badge"
                         style={`background-color: ${getStatusColor('completed')}`}
@@ -212,7 +213,7 @@ const getStatusColor = (status: string) => {
                     </div>
 
                     {quiz.description && (
-                      <p class="quiz-description">{quiz.description}</p>
+                      <p class="quiz-description">{displayText(quiz.description)}</p>
                     )}
 
                     <div class="quiz-stats">
@@ -258,230 +259,3 @@ const getStatusColor = (status: string) => {
     }
   </div>
 </Layout>
-
-<style>
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
-  }
-
-  .hero {
-    text-align: center;
-    margin-bottom: 3rem;
-    padding: 2rem 0;
-  }
-
-  .hero h1 {
-    font-size: 2.5rem;
-    color: #1f2937;
-    margin-bottom: 0.5rem;
-  }
-
-  .subtitle {
-    font-size: 1.25rem;
-    color: #6b7280;
-  }
-
-  .quiz-section {
-    margin-bottom: 3rem;
-  }
-
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-  }
-
-  .section-header h2 {
-    font-size: 1.875rem;
-    color: #1f2937;
-  }
-
-  .btn-primary {
-    background-color: #0070f3;
-    color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    text-decoration: none;
-    font-weight: 600;
-    transition: background-color 0.2s;
-  }
-
-  .btn-primary:hover {
-    background-color: #0051cc;
-  }
-
-  .btn-secondary {
-    background-color: #f3f4f6;
-    color: #1f2937;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    text-decoration: none;
-    font-weight: 600;
-    transition: background-color 0.2s;
-  }
-
-  .btn-secondary:hover {
-    background-color: #e5e7eb;
-  }
-
-  .quiz-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 1.5rem;
-  }
-
-  .quiz-card {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    text-decoration: none;
-    color: inherit;
-    transition: all 0.2s;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .quiz-card:hover {
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
-  }
-
-  .quiz-card.completed {
-    opacity: 0.9;
-  }
-
-  .quiz-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: start;
-    margin-bottom: 1rem;
-    gap: 1rem;
-  }
-
-  .quiz-card-header h3 {
-    font-size: 1.25rem;
-    color: #1f2937;
-    margin: 0;
-    flex: 1;
-  }
-
-  .status-badge {
-    padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: white;
-    white-space: nowrap;
-  }
-
-  .quiz-description {
-    color: #6b7280;
-    margin-bottom: 1rem;
-    font-size: 0.875rem;
-  }
-
-  .quiz-stats {
-    display: flex;
-    gap: 2rem;
-    margin-bottom: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid #f3f4f6;
-  }
-
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .stat-label {
-    font-size: 0.75rem;
-    color: #9ca3af;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .stat-value {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #1f2937;
-  }
-
-  .quiz-action {
-    margin-top: auto;
-    padding-top: 1rem;
-  }
-
-  .action-text {
-    color: #0070f3;
-    font-weight: 600;
-  }
-
-  .submitted-badge {
-    color: #10b981;
-    font-weight: 600;
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 3rem 1rem;
-    background: #f9fafb;
-    border-radius: 0.75rem;
-  }
-
-  .empty-state p {
-    color: #6b7280;
-    margin-bottom: 1rem;
-  }
-
-  .cta-section {
-    display: flex;
-    justify-content: center;
-    margin-top: 4rem;
-  }
-
-  .cta-card {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-    padding: 3rem;
-    text-align: center;
-    max-width: 500px;
-  }
-
-  .cta-card h2 {
-    font-size: 2rem;
-    color: #1f2937;
-    margin-bottom: 1rem;
-  }
-
-  .cta-card p {
-    color: #6b7280;
-    margin-bottom: 2rem;
-    line-height: 1.6;
-  }
-
-  @media (max-width: 768px) {
-    .container {
-      padding: 1rem;
-    }
-
-    .hero h1 {
-      font-size: 1.875rem;
-    }
-
-    .section-header {
-      flex-direction: column;
-      align-items: start;
-      gap: 1rem;
-    }
-
-    .quiz-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>

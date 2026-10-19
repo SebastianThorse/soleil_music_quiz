@@ -1,6 +1,8 @@
 ---
 // src/pages/quiz/[id].astro
 import Layout from '../../layouts/Layout.astro';
+import QuizStages from '../../components/QuizStages.astro';
+import { displayText } from '../../lib/display-text';
 import { db } from '../../lib/db';
 import {
   quizzes,
@@ -215,7 +217,7 @@ const getStatusColor = (status: string) => {
     <div class="header">
       <a href="/" class="back-link">← Tillbaka till startsidan</a>
       <div class="title-row">
-        <h1>{quiz.name}</h1>
+        <h1>{displayText(quiz.name)}</h1>
         <span
           class="status-badge"
           style={`background-color: ${getStatusColor(quiz.status)}`}
@@ -223,7 +225,7 @@ const getStatusColor = (status: string) => {
           {getStatusText(quiz.status)}
         </span>
       </div>
-      {quiz.description && <p class="description">{quiz.description}</p>}
+      {quiz.description && <p class="description">{displayText(quiz.description)}</p>}
       {
         isAdmin && (
           <p class="description">
@@ -245,9 +247,11 @@ const getStatusColor = (status: string) => {
       </div>
     </div>
 
-    {error && <div class="error-message">{error}</div>}
+    <QuizStages status={quiz.status} />
 
-    {success && <div class="success-message">{success}</div>}
+    {error && <div class="error-message" role="alert">{error}</div>}
+
+    {success && <div class="success-message" role="status">{success}</div>}
 
     {/* OPEN STAGE - Join and Submit Songs */}
     {
@@ -258,7 +262,7 @@ const getStatusColor = (status: string) => {
           {!isParticipant ? (
             <div class="join-card">
               <p>Gå med i quizet för att skicka in din låt!</p>
-              <form method="POST">
+              <form method="POST" accept-charset="UTF-8">
                 <input type="hidden" name="action" value="join" />
                 <button type="submit" class="btn-primary">
                   Gå med i quizet
@@ -270,10 +274,10 @@ const getStatusColor = (status: string) => {
               <h3>✓ Din inlämning</h3>
               <div class="submission-details">
                 {userSubmission.songTitle && (
-                  <p class="song-title">{userSubmission.songTitle}</p>
+                  <p class="song-title">{displayText(userSubmission.songTitle)}</p>
                 )}
                 {userSubmission.artist && (
-                  <p class="artist">{userSubmission.artist}</p>
+                  <p class="artist">{displayText(userSubmission.artist)}</p>
                 )}
                 <a
                   href={userSubmission.songLink}
@@ -286,7 +290,7 @@ const getStatusColor = (status: string) => {
               </div>
             </div>
           ) : (
-            <form method="POST" class="submission-form">
+            <form method="POST" accept-charset="UTF-8" class="submission-form">
               <input type="hidden" name="action" value="submit_song" />
 
               <div class="form-group">
@@ -346,7 +350,7 @@ const getStatusColor = (status: string) => {
                 Det finns {submissions.length} inlämnade{' '}
                 {submissions.length === 1 ? 'låt' : 'låtar'}.
               </p>
-              <form method="POST">
+              <form method="POST" accept-charset="UTF-8">
                 <input type="hidden" name="action" value="change_status" />
                 <input type="hidden" name="new_status" value="guessing" />
                 <button type="submit" class="btn-warning">
@@ -363,7 +367,7 @@ const getStatusColor = (status: string) => {
               <div class="submission-grid">
                 {submissions.map((sub) => (
                   <div class="submission-item">
-                    <p class="submitter">{sub.userName}</p>
+                    <p class="submitter">{displayText(sub.userName)}</p>
                     {/* {sub.songTitle && (
                       <p class="song-info">
                         <strong>{sub.songTitle}</strong>
@@ -388,7 +392,7 @@ const getStatusColor = (status: string) => {
                   </p>
                   <ul>
                     {participantsWithoutSongSubmissions.map((participant) => (
-                      <li>{participant.name}</li>
+                      <li>{displayText(participant.name)}</li>
                     ))}
                   </ul>
                 </div>
@@ -434,7 +438,7 @@ const getStatusColor = (status: string) => {
                 {votedCount.count} av {participantCount.count} deltagare har
                 gissat hittills.
               </p>
-              <form method="POST" class="admin-action-row">
+              <form method="POST" accept-charset="UTF-8" class="admin-action-row">
                 <input type="hidden" name="action" value="change_status" />
                 <button
                   type="submit"
@@ -490,427 +494,3 @@ const getStatusColor = (status: string) => {
     }
   </div>
 </Layout>
-
-<style>
-  .container {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 2rem;
-  }
-
-  .header {
-    margin-bottom: 2rem;
-  }
-
-  .back-link {
-    display: inline-block;
-    color: #6b7280;
-    text-decoration: none;
-    margin-bottom: 1rem;
-    font-size: 0.875rem;
-    transition: color 0.2s;
-  }
-
-  .back-link:hover {
-    color: #1f2937;
-  }
-
-  .title-row {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 0.5rem;
-  }
-
-  h1 {
-    font-size: 2rem;
-    color: #1f2937;
-    margin: 0;
-  }
-
-  .status-badge {
-    padding: 0.5rem 1rem;
-    border-radius: 9999px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: white;
-    white-space: nowrap;
-  }
-
-  .description {
-    color: #6b7280;
-    font-size: 1.125rem;
-    margin: 0.5rem 0 1.5rem 0;
-  }
-
-  .quiz-stats {
-    display: flex;
-    gap: 2rem;
-    padding: 1.5rem;
-    background: #f9fafb;
-    border-radius: 0.5rem;
-  }
-
-  .stat-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .stat-value {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #1f2937;
-  }
-
-  .stat-label {
-    font-size: 0.875rem;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .error-message,
-  .success-message {
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin-bottom: 1.5rem;
-    font-size: 0.875rem;
-  }
-
-  .error-message {
-    background-color: #fee2e2;
-    border: 1px solid #fca5a5;
-    color: #991b1b;
-  }
-
-  .success-message {
-    background-color: #d1fae5;
-    border: 1px solid #6ee7b7;
-    color: #065f46;
-  }
-
-  .stage-container {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-    padding: 2rem;
-  }
-
-  .stage-container h2 {
-    font-size: 1.5rem;
-    color: #1f2937;
-    margin: 0 0 1.5rem 0;
-  }
-
-  .join-card {
-    text-align: center;
-    padding: 2rem;
-    background: #f9fafb;
-    border-radius: 0.5rem;
-  }
-
-  .join-card p {
-    margin-bottom: 1.5rem;
-    color: #4b5563;
-  }
-
-  .submission-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .form-label {
-    font-weight: 600;
-    color: #1f2937;
-    font-size: 0.875rem;
-  }
-
-  .required {
-    color: #ef4444;
-  }
-
-  .form-input {
-    padding: 0.75rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.5rem;
-    font-size: 1rem;
-    font-family: inherit;
-    transition:
-      border-color 0.2s,
-      box-shadow 0.2s;
-  }
-
-  .form-input:focus {
-    outline: none;
-    border-color: #0070f3;
-    box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
-  }
-
-  .form-help {
-    font-size: 0.75rem;
-    color: #6b7280;
-    margin: 0;
-  }
-
-  .submission-card {
-    padding: 1.5rem;
-    background: #f9fafb;
-    border-radius: 0.5rem;
-    border: 2px solid #e5e7eb;
-  }
-
-  .submission-card.submitted {
-    background: #d1fae5;
-    border-color: #6ee7b7;
-  }
-
-  .submission-card h3 {
-    margin: 0 0 1rem 0;
-    color: #065f46;
-  }
-
-  .submission-details .song-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 0.25rem 0;
-  }
-
-  .submission-details .artist {
-    color: #6b7280;
-    margin: 0 0 1rem 0;
-  }
-
-  .song-link {
-    color: #0070f3;
-    text-decoration: none;
-    font-weight: 600;
-  }
-
-  .song-link:hover {
-    text-decoration: underline;
-  }
-
-  .admin-section {
-    margin-top: 2rem;
-    padding-top: 2rem;
-    border-top: 2px solid #e5e7eb;
-  }
-
-  .admin-section h3 {
-    font-size: 1.125rem;
-    color: #1f2937;
-    margin: 0 0 1rem 0;
-  }
-
-  .admin-section .info-text {
-    text-align: left;
-    font-size: 0.875rem;
-    margin: 0 0 1rem 0;
-  }
-
-  .admin-action-row {
-    margin-bottom: 1.5rem;
-  }
-
-  .warning-text {
-    color: #991b1b;
-    margin: 0 0 1.5rem 0;
-    font-weight: 500;
-  }
-
-  .submissions-list {
-    margin-top: 2rem;
-  }
-
-  .submissions-list h3 {
-    font-size: 1.125rem;
-    margin-bottom: 1rem;
-    color: #1f2937;
-  }
-
-  .submission-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 1rem;
-  }
-
-  .submission-item {
-    padding: 1rem;
-    background: #f9fafb;
-    border-radius: 0.5rem;
-    border: 1px solid #e5e7eb;
-  }
-
-  .submitter {
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0;
-  }
-
-  .song-info {
-    font-size: 0.875rem;
-    color: #6b7280;
-    margin: 0.25rem 0;
-  }
-
-  .link {
-    color: #0070f3;
-    text-decoration: none;
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .link:hover {
-    text-decoration: underline;
-  }
-
-  .guessing-info-card {
-    text-align: center;
-    padding: 2rem;
-  }
-
-  .info-text {
-    font-size: 1.125rem;
-    color: #4b5563;
-    margin-bottom: 2rem;
-  }
-
-  .guessing-stats {
-    display: flex;
-    justify-content: center;
-    gap: 3rem;
-    margin-bottom: 2rem;
-  }
-
-  .stat-box {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .big-number {
-    font-size: 3rem;
-    font-weight: 700;
-    color: #0070f3;
-  }
-
-  .stat-text {
-    font-size: 0.875rem;
-    color: #6b7280;
-  }
-
-  .completed-card {
-    text-align: center;
-    padding: 2rem;
-    background: #f9fafb;
-    border-radius: 0.5rem;
-  }
-
-  .completed-card p {
-    margin-bottom: 1.5rem;
-    color: #4b5563;
-  }
-
-  .btn-primary,
-  .btn-secondary,
-  .btn-warning,
-  .btn-danger {
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.2s;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-    display: inline-block;
-    text-align: center;
-  }
-
-  .btn-primary {
-    background-color: #0070f3;
-    color: white;
-  }
-
-  .btn-primary:hover {
-    background-color: #0051cc;
-  }
-
-  .btn-secondary {
-    background-color: #f3f4f6;
-    color: #1f2937;
-  }
-
-  .btn-secondary:hover {
-    background-color: #e5e7eb;
-  }
-
-  .btn-warning {
-    background-color: #f59e0b;
-    color: white;
-  }
-
-  .btn-warning:hover {
-    background-color: #d97706;
-  }
-
-  .btn-danger {
-    background-color: #ef4444;
-    color: white;
-  }
-
-  .btn-danger:hover {
-    background-color: #dc2626;
-  }
-
-  .btn-large {
-    padding: 1rem 2rem;
-    font-size: 1.125rem;
-  }
-
-  @media (max-width: 768px) {
-    .container {
-      padding: 1rem;
-    }
-
-    h1 {
-      font-size: 1.5rem;
-    }
-
-    .title-row {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .quiz-stats {
-      flex-direction: column;
-      gap: 1rem;
-    }
-
-    .guessing-stats {
-      flex-direction: column;
-      gap: 1.5rem;
-    }
-
-    .submission-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .admin-section form {
-      flex-direction: column !important;
-    }
-
-    .admin-section button {
-      width: 100%;
-    }
-  }
-</style>

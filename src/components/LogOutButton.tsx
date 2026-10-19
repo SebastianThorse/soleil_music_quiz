@@ -1,5 +1,6 @@
 // src/components/UserMenu.tsx
 import { authClient, useSession } from '../lib/auth-client';
+import { displayText } from '../lib/display-text';
 
 interface Props {
   initialSession?: any;
@@ -15,15 +16,19 @@ export default function UserMenu({ initialSession }: Props) {
   };
 
   if (!currentSession) {
-    return <a href="/login">Login</a>;
+    return (
+      <a href="/login" className="btn-secondary">
+        Logga in
+      </a>
+    );
   }
 
   return (
-    <div>
-      <span>
-        Welcome, {currentSession.user.name || currentSession.user.email}
-      </span>
-      <button onClick={handleLogout}>Logout</button>
+    <div className="user-menu">
+      <span>{displayText(currentSession.user.name || currentSession.user.email)}</span>
+      <button className="btn-secondary" onClick={handleLogout}>
+        Logga ut
+      </button>
     </div>
   );
 }
