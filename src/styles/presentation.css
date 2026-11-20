@@ -367,7 +367,7 @@
 }
 .p-ranking {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   list-style: none;
   padding: 0;
@@ -498,16 +498,6 @@
   .p-results-heading h1 {
     font-size: 2.5rem;
   }
-  .p-ranking {
-    gap: 0.65rem;
-  }
-  .p-ranking li {
-    padding: 0.65rem 1rem;
-  }
-  .p-rank,
-  .p-score {
-    font-size: 2.3rem;
-  }
 }
 @media (max-width: 800px) {
   .p-header {
@@ -548,9 +538,6 @@
   .p-guess {
     padding: 1rem;
   }
-  .p-ranking {
-    grid-template-columns: 1fr;
-  }
   .p-results-heading { flex-wrap: wrap; gap: 1rem; }
   .p-finale-symbol { display: none; }
   .p-medal-progress { margin-left: 0; }
@@ -573,5 +560,66 @@
   }
   .p-controls > * {
     flex: 1;
+  }
+}
+/* The ranking fills the height left under the heading; rows shrink so a full
+   page (PRESENTATION_PAGE_SIZE players) fits one screen without scrolling. */
+@media (min-width: 801px) {
+  .p-results {
+    display: flex;
+    flex-direction: column;
+    max-width: 1280px;
+  }
+  .p-ranking-area {
+    flex: 1 1 0;
+    min-height: 0;
+    container-type: size;
+    overflow-y: auto;
+  }
+  .p-ranking {
+    --gap: 0.375rem;
+    --row: clamp(32px, (100cqh - (var(--rows) - 1) * var(--gap)) / var(--rows), 96px);
+    gap: var(--gap);
+  }
+  .p-ranking li {
+    height: var(--row);
+    grid-template-columns: calc(var(--row) * 0.7 + 6.5rem) minmax(0, 1fr) auto;
+    gap: calc(var(--row) * 0.3);
+    padding: 0 calc(var(--row) * 0.3);
+  }
+  .p-rank {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    font-size: calc(var(--row) * 0.42);
+  }
+  .p-rank-number {
+    width: calc(var(--row) * 0.7);
+    height: calc(var(--row) * 0.7);
+    margin-bottom: 0;
+  }
+  .p-rank small {
+    display: inline;
+  }
+  .p-player-name {
+    font-size: calc(var(--row) * 0.42);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .p-winner-label {
+    display: inline;
+    margin: 0 0 0 0.75rem;
+    vertical-align: middle;
+  }
+  .p-score {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: calc(var(--row) * 0.5);
+  }
+  .p-score small {
+    display: inline;
   }
 }

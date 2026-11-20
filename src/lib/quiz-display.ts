@@ -44,22 +44,26 @@ export function getSpotifyTrackId(link: string): string | null {
   }
 }
 
-// Medal groups stay hidden until revealed; pagination is applied separately.
+// Best placement first. Medal groups stay hidden until revealed, third place
+// first; pagination is applied separately.
 export function presentationEntries(
   entries: LeaderboardEntry[],
   revealedMedals: number,
 ) {
-  const groups = [...buildLeaderboardGroups(entries)].reverse();
-  return [
-    ...groups.filter((g) => g.rank > 3),
-    ...groups.filter((g) => g.rank <= 3).slice(0, revealedMedals),
-  ].flatMap((group) =>
-    group.entries.map((entry) => ({
-      ...entry,
-      rank: group.rank,
-      shared: group.entries.length > 1,
-    })),
-  );
+  const groups = buildLeaderboardGroups(entries);
+  const revealed = groups
+    .filter((g) => g.rank <= 3)
+    .reverse()
+    .slice(0, revealedMedals);
+  return groups
+    .filter((g) => g.rank > 3 || revealed.includes(g))
+    .flatMap((group) =>
+      group.entries.map((entry) => ({
+        ...entry,
+        rank: group.rank,
+        shared: group.entries.length > 1,
+      })),
+    );
 }
 
 // Paging is a fallback only: normal quizzes remain on one full-HD screen.
