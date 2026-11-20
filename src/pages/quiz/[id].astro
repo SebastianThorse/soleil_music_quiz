@@ -368,9 +368,7 @@ const getStatusColor = (status: string) => {
             <details class="submissions-list">
               <summary class="submissions-summary">
                 Visa vem som har lämnat in ({submissions.length})
-                <span class="warning-text">
-                  Kan ge ledtrådar om vem som valde vilken låt.
-                </span>
+                <span class="submissions-note">Deltagare visas i bokstavsordning</span>
               </summary>
               <div class="submission-grid">
                 {submissionsByName.map((sub) => (

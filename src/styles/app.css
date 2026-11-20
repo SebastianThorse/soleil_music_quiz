@@ -462,9 +462,11 @@ iframe {
   cursor: pointer;
   font-weight: 700;
 }
-.submissions-summary .warning-text {
+.submissions-note {
   display: block;
   margin: 0.2rem 0 0 1.1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
   font-weight: 400;
 }
 .submissions-list[open] .submission-grid {
