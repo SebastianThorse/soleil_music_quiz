@@ -11,6 +11,7 @@ import {
 } from '../../../lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import QuizPresentation from '../../../components/QuizPresentation';
+import { quizOrder } from '../../../lib/quiz-display';
 
 const { user } = Astro.locals;
 const { id } = Astro.params;
@@ -82,12 +83,7 @@ const leaderboardData = await db
   .groupBy(userTable.id)
   .orderBy(sql`count(*) filter (where ${guesses.isCorrect} = 1) DESC`);
 
-// Shuffle submissions for random order (consistent with quiz ID)
-const shuffledSubmissions = [...submissions].sort((a, b) => {
-  const hashA = (a.id * quiz.id) % 1000;
-  const hashB = (b.id * quiz.id) % 1000;
-  return hashA - hashB;
-});
+const shuffledSubmissions = quizOrder(submissions, quiz.id);
 
 // For each submission, get guess distribution
 const submissionsWithGuesses = shuffledSubmissions.map((submission) => {

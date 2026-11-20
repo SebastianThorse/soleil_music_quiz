@@ -3,7 +3,7 @@
 import Layout from '../../../layouts/Layout.astro';
 import QuizStages from '../../../components/QuizStages.astro';
 import { displayText } from '../../../lib/display-text';
-import { getSpotifyTrackId } from '../../../lib/quiz-display';
+import { getSpotifyTrackId, quizOrder } from '../../../lib/quiz-display';
 import { db } from '../../../lib/db';
 import {
   quizzes,
@@ -203,13 +203,7 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-// Shuffle submissions so they appear in random order (seed with quiz id for consistency)
-const shuffledSubmissions = [...submissions].sort((a, b) => {
-  // Simple deterministic shuffle based on quiz id and submission ids
-  const hashA = (a.id * quiz.id) % 1000;
-  const hashB = (b.id * quiz.id) % 1000;
-  return hashA - hashB;
-});
+const shuffledSubmissions = quizOrder(submissions, quiz.id);
 
 
 ---

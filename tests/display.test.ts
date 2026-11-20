@@ -6,6 +6,7 @@ import {
   getSpotifyTrackId,
   presentationEntries,
   presentationPages,
+  quizOrder,
 } from '../src/lib/quiz-display.ts';
 
 test('repairs Swedish mojibake without damaging existing Unicode or mixed text', () => {
@@ -127,4 +128,21 @@ test('15 players share one screen; only larger results paginate, including share
   );
   assert.equal(new Set(fallback.flat().map((entry) => entry.userId)).size, 16);
   assert.deepEqual(presentationPages([], 0), []);
+});
+
+test('quiz song order is stable per quiz and unrelated to submission order', () => {
+  const songs = Array.from({ length: 11 }, (_, i) => ({ id: 400 + i }));
+  const ids = (list: { id: number }[]) => list.map((s) => s.id);
+
+  assert.deepEqual(ids(quizOrder(songs, 35)), ids(quizOrder([...songs].reverse(), 35)));
+  assert.deepEqual(ids(quizOrder(songs, 35)).sort((a, b) => a - b), ids(songs));
+
+  const isRotation = (order: number[]) => {
+    const start = ids(songs).indexOf(order[0]);
+    return order.every((id, i) => id === songs[(start + i) % songs.length].id);
+  };
+  const quizzes = Array.from({ length: 60 }, (_, q) => q + 1);
+  assert.ok(quizzes.every((q) => !isRotation(ids(quizOrder(songs, q)))));
+  assert.notDeepEqual(ids(quizOrder(songs, 1)), ids(quizOrder(songs, 2)));
+  assert.deepEqual(quizOrder([], 1), []);
 });
