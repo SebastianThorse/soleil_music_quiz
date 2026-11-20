@@ -1,0 +1,80 @@
+---
+import { eq } from 'drizzle-orm';
+import Layout from '../../layouts/Layout.astro';
+import { displayText } from '../../lib/display-text';
+import { db } from '../../lib/db';
+import { user } from '../../lib/db/schema';
+import { getQuizScores } from '../../lib/stats';
+import { rankByWins, winsFor, winsLabel } from '../../lib/win-stats';
+
+const { id } = Astro.params;
+
+const scores = await getQuizScores();
+const player = rankByWins(scores).find((p) => p.userId === id);
+
+let name = player?.userName;
+if (!player) {
+  const [found] = await db.select({ name: user.name }).from(user).where(eq(user.id, id!)).limit(1);
+  if (!found) return Astro.redirect('/stats');
+  name = found.name;
+}
+
+const wins = winsFor(id!, scores);
+const names = new Intl.ListFormat('sv', { type: 'conjunction' });
+const formatDate = (date: Date | null) =>
+  date?.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' }) ?? '';
+---
+
+<Layout>
+  <div class="container">
+    <a href="/stats" class="back-link">← Till statistiken</a>
+    <header class="header">
+      <h1>{displayText(name!)}</h1>
+    </header>
+
+    <div class="stats-summary">
+      {player && (
+        <div class="stat-item">
+          <span class="stat-text">Plats</span>
+          <span class="stat-number">{player.rank}</span>
+        </div>
+      )}
+      <div class="stat-item">
+        <span class="stat-text">Vinster</span>
+        <span class="stat-number">{player?.wins ?? 0}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-text">Rätta gissningar</span>
+        <span class="stat-number">{player?.correctGuesses ?? 0}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-text">Quiz</span>
+        <span class="stat-number">{player?.quizzes ?? 0}</span>
+      </div>
+    </div>
+
+    <section class="section">
+      <h2 class="player-wins-title">{wins.length > 0 ? winsLabel(wins.length) : 'Vinster'}</h2>
+      {
+        wins.length > 0 ? (
+          <ul class="player-wins">
+            {wins.map(({ score, sharedWith }) => (
+              <li class="player-win">
+                <a href={`/quiz/${score.quizId}/results`} class="player-win-name">
+                  {displayText(score.quizName)}
+                </a>
+                <span class="player-win-meta">
+                  {formatDate(score.closedAt)} · {score.correctGuesses}/{score.totalGuesses} rätt
+                  {sharedWith.length > 0 &&
+                    ` · delad med ${names.format(sharedWith.map(displayText))}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="hidden-text">Inga vinster ännu.</p>
+        )
+      }
+    </section>
+  </div>
+</Layout>

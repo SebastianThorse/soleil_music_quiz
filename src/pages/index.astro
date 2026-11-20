@@ -10,14 +10,19 @@ import {
   guesses,
 } from '../lib/db/schema';
 import { eq, and, inArray, sql, desc } from 'drizzle-orm';
+import { getWinStats } from '../lib/stats';
+import { medalFor, playerUrl, podium, winsLabel, type PlayerStats } from '../lib/win-stats';
 
 const { user, session } = Astro.locals;
 const initialSession = user && session ? { user, session } : null;
 
 let activeQuizzes: any[] = [];
 let completedQuizzes: any[] = [];
+let topList: PlayerStats[] = [];
 
 if (user) {
+  topList = podium(await getWinStats());
+
   // Get active quizzes (open or guessing status)
   const activeQuizzesData = await db
     .select({
@@ -123,6 +128,26 @@ const getStatusColor = (status: string) => {
     {
       user ? (
         <>
+          {topList.length > 0 && (
+            <section class="top-list" aria-labelledby="top-list-title">
+              <h2 id="top-list-title" class="top-list-title">Topplista</h2>
+              <ol class="top-list-entries">
+                {topList.map((player) => (
+                  <li class={`top-list-entry rank-${player.rank}`}>
+                    <span class="top-list-medal" aria-label={`Plats ${player.rank}`}>
+                      {medalFor(player.rank)}
+                    </span>
+                    <a href={playerUrl(player.userId)} class="player-name">
+                      {displayText(player.userName)}
+                    </a>
+                    <span class="top-list-wins">{winsLabel(player.wins)}</span>
+                  </li>
+                ))}
+              </ol>
+              <a href="/stats" class="top-list-link">Se all statistik →</a>
+            </section>
+          )}
+
           <section class="quiz-section">
             <div class="section-header">
               <h2>På gång</h2>

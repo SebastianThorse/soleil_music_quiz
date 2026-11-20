@@ -1,0 +1,79 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { displayText } from '../lib/display-text';
+import { getWinStats } from '../lib/stats';
+import { medalFor, playerUrl, podium, winsLabel } from '../lib/win-stats';
+
+const players = await getWinStats();
+const top = podium(players);
+const rest = players.slice(top.length);
+---
+
+<Layout>
+  <div class="container">
+    <a href="/" class="back-link">← Till startsidan</a>
+    <header class="header">
+      <h1>Statistik</h1>
+      <p class="subtitle">
+        Flest rätta gissningar i ett avslutat quiz ger en vinst. Vid lika många
+        vinster avgör det totala antalet rätta gissningar. Quiz där färre än tre
+        personer gissade räknas inte.
+      </p>
+    </header>
+
+    {
+      players.length === 0 ? (
+        <div class="empty-state">
+          <p>Ingen statistik ännu. Den dyker upp när det första quizet är avslutat.</p>
+        </div>
+      ) : (
+        <>
+          {top.length > 0 && (
+            <ol class="stats-podium">
+              {top.map((player) => (
+                <li class={`stats-podium-card rank-${player.rank}`}>
+                  <span class="stats-podium-medal" aria-label={`Plats ${player.rank}`}>
+                    {medalFor(player.rank)}
+                  </span>
+                  <a href={playerUrl(player.userId)} class="stats-podium-name">
+                    {displayText(player.userName)}
+                  </a>
+                  <span class="stats-podium-wins">{winsLabel(player.wins)}</span>
+                  <span class="player-stats">{player.correctGuesses} rätta gissningar</span>
+                </li>
+              ))}
+            </ol>
+          )}
+
+          {rest.length > 0 && (
+            <section class="section stats-table-section">
+              <h2>Alla deltagare</h2>
+              <table class="stats-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Plats</th>
+                    <th scope="col">Namn</th>
+                    <th scope="col">Vinster</th>
+                    <th scope="col">Rätta gissningar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rest.map((player) => (
+                    <tr>
+                      <td class="stats-rank">{player.rank}</td>
+                      <th scope="row" class="player-name">
+                        <a href={playerUrl(player.userId)}>{displayText(player.userName)}</a>
+                      </th>
+                      <td>{player.wins}</td>
+                      <td>{player.correctGuesses}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+        </>
+      )
+    }
+  </div>
+</Layout>
