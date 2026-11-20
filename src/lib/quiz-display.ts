@@ -44,6 +44,24 @@ export function getSpotifyTrackId(link: string): string | null {
   }
 }
 
+function hash32(text: string) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  }
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+// Song ids grow in submission order, so the order must not follow them (it
+// would tell whoever saw the submissions who picked which song). Seeded by the
+// quiz so reloads keep the same order.
+export function quizOrder<T extends { id: number }>(items: T[], quizId: number): T[] {
+  const key = (id: number) => hash32(`${quizId}:${id}`);
+  return [...items].sort((a, b) => key(a.id) - key(b.id) || a.id - b.id);
+}
+
 // Medal groups stay hidden until revealed; pagination is applied separately.
 export function presentationEntries(
   entries: LeaderboardEntry[],

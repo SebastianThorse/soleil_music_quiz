@@ -455,6 +455,21 @@ iframe {
 .submitter {
   margin: 0;
 }
+.submissions-list {
+  margin-top: 2rem;
+}
+.submissions-summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.submissions-summary .warning-text {
+  display: block;
+  margin: 0.2rem 0 0 1.1rem;
+  font-weight: 400;
+}
+.submissions-list[open] .submission-grid {
+  margin-top: 1rem;
+}
 .songs-list {
   display: grid;
   gap: 1.25rem;

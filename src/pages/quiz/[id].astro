@@ -95,9 +95,12 @@ const participants = await db
   .innerJoin(userTable, eq(quizParticipants.userId, userTable.id))
   .where(eq(quizParticipants.quizId, quiz.id));
 
-  const participantsWithoutSongSubmissions = participants.filter(
-    (participant) => !submissions.some((submission) => submission.userName === participant.name)
-  );
+// Alphabetical, so the admin list carries no hint of the guessing order.
+const byName = (a: string, b: string) => displayText(a).localeCompare(displayText(b), 'sv');
+const submissionsByName = [...submissions].sort((a, b) => byName(a.userName, b.userName));
+const participantsWithoutSongSubmissions = participants
+  .filter((participant) => !submissions.some((submission) => submission.userName === participant.name))
+  .sort((a, b) => byName(a.name, b.name));
 
 // Count how many participants have made at least one guess
 const [votedCount] = await db
@@ -362,10 +365,15 @@ const getStatusColor = (status: string) => {
 
           {/* Show submissions to admin */}
           {isAdmin && submissions.length > 0 && (
-            <div class="submissions-list">
-              <h3>Inlämnade låtar ({submissions.length})</h3>
+            <details class="submissions-list">
+              <summary class="submissions-summary">
+                Visa vem som har lämnat in ({submissions.length})
+                <span class="warning-text">
+                  Kan ge ledtrådar om vem som valde vilken låt.
+                </span>
+              </summary>
               <div class="submission-grid">
-                {submissions.map((sub) => (
+                {submissionsByName.map((sub) => (
                   <div class="submission-item">
                     <p class="submitter">{displayText(sub.userName)}</p>
                     {/* {sub.songTitle && (
@@ -397,7 +405,7 @@ const getStatusColor = (status: string) => {
                   </ul>
                 </div>
               )}
-            </div>
+            </details>
           )}
         </div>
       )
