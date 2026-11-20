@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { displayText } from '../lib/display-text';
 import {
   buildLeaderboardGroups,
@@ -96,6 +96,11 @@ export default function QuizPresentation({
   const groups = [...buildLeaderboardGroups(leaderboard)].reverse();
   const medals = groups.filter((g) => g.rank <= 3);
   const resultSheets = presentationPages(leaderboard, medalCount);
+  // Sized for the page once every medal is out, so rows don't resize during the reveal.
+  const rankingRows = Math.max(
+    1,
+    Math.min(PRESENTATION_PAGE_SIZE, leaderboard.length - resultPage * PRESENTATION_PAGE_SIZE),
+  );
   const guessPages = Math.ceil(guesses.length / PRESENTATION_PAGE_SIZE);
   const allMedals = medalCount >= medals.length;
   const latestMedal = medals[medalCount - 1];
@@ -125,8 +130,7 @@ export default function QuizPresentation({
         setScreen('results');
       }
     } else if (screen === 'results' && !allMedals) {
-      const visibleCount = resultSheets.flat().length;
-      setResultPage(Math.floor(visibleCount / PRESENTATION_PAGE_SIZE));
+      setResultPage(0);
       setMedalCount((count) => count + 1);
     }
   };
@@ -392,34 +396,39 @@ export default function QuizPresentation({
             </div>
           </div>
           {resultSheets.length ? (
-            <ol className="p-ranking" aria-label="Avslöjade placeringar">
-              {(resultSheets[resultPage] ?? []).map((entry) => (
-                <li
-                  className={`${entry.rank <= 3 ? `p-medal p-metal-${entry.rank}` : ''} ${entry.rank === latestMedal?.rank ? 'is-latest' : ''}`}
-                  key={entry.userId}
-                >
-                  <span className="p-rank">
-                    <span className="p-rank-number">{entry.rank}</span>
-                    <small>{entry.shared ? 'delad plats' : 'plats'}</small>
-                  </span>
-                  <strong className="p-player-name">
-                    {displayText(entry.userName)}
-                    {entry.rank === 1 && (
-                      <small className="p-winner-label">
-                        {entry.shared ? 'Delad vinnare' : 'Fredagens vinnare'}
-                      </small>
-                    )}
-                  </strong>
-                  <span className="p-score">
-                    {entry.correctGuesses}
-                    <small>av {entry.totalGuesses} rätt</small>
-                  </span>
-                  <span className="p-score-track" aria-hidden="true">
-                    <span style={{ width: `${entry.totalGuesses > 0 ? Math.min(100, Math.max(0, entry.correctGuesses / entry.totalGuesses * 100)) : 0}%` }} />
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <div
+              className="p-ranking-area"
+              style={{ '--rows': rankingRows } as CSSProperties}
+            >
+              <ol className="p-ranking" aria-label="Avslöjade placeringar">
+                {(resultSheets[resultPage] ?? []).map((entry) => (
+                  <li
+                    className={`${entry.rank <= 3 ? `p-medal p-metal-${entry.rank}` : ''} ${entry.rank === latestMedal?.rank ? 'is-latest' : ''}`}
+                    key={entry.userId}
+                  >
+                    <span className="p-rank">
+                      <span className="p-rank-number">{entry.rank}</span>
+                      <small>{entry.shared ? 'delad plats' : 'plats'}</small>
+                    </span>
+                    <strong className="p-player-name">
+                      {displayText(entry.userName)}
+                      {entry.rank === 1 && (
+                        <small className="p-winner-label">
+                          {entry.shared ? 'Delad vinnare' : 'Fredagens vinnare'}
+                        </small>
+                      )}
+                    </strong>
+                    <span className="p-score">
+                      {entry.correctGuesses}
+                      <small>av {entry.totalGuesses} rätt</small>
+                    </span>
+                    <span className="p-score-track" aria-hidden="true">
+                      <span style={{ width: `${entry.totalGuesses > 0 ? Math.min(100, Math.max(0, entry.correctGuesses / entry.totalGuesses * 100)) : 0}%` }} />
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           ) : (
             <p className="p-empty">
               {leaderboard.length

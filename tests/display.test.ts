@@ -109,11 +109,12 @@ test('15 players share one screen; only larger results paginate, including share
   assert.ok(before.every((e) => e.rank > 3));
   const bronze = presentationEntries(entries, 1);
   assert.equal(bronze.length, 13);
-  assert.equal(bronze.at(-1)?.rank, 3);
+  assert.equal(bronze[0]?.rank, 3);
   const all = presentationEntries(entries, 2);
   assert.equal(all.length, 15);
   assert.equal(new Set(all.map((e) => e.userId)).size, 15);
-  assert.ok(all.slice(-2).every((e) => e.rank === 1 && e.shared));
+  assert.ok(all.slice(0, 2).every((e) => e.rank === 1 && e.shared));
+  assert.ok(all.every((e, i) => i === 0 || all[i - 1].rank <= e.rank));
   const ties = entries.map((e) => ({ ...e, correctGuesses: 0 }));
   assert.deepEqual(presentationEntries(ties, 0), []);
   assert.equal(presentationEntries(ties, 1).length, 15);

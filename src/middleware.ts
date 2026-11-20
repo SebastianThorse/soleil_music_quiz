@@ -17,7 +17,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   // Define protected routes that require authentication
-  const protectedRoutes = ['/quiz'];
+  const protectedRoutes = ['/quiz', '/stats'];
   const isProtectedRoute = protectedRoutes.some((route) =>
     context.url.pathname.startsWith(route),
   );
