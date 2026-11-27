@@ -1,12 +1,38 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { displayText } from '../lib/display-text';
-import { getWinStats } from '../lib/stats';
-import { medalFor, playerUrl, podium, winsLabel } from '../lib/win-stats';
+import { getQuizScores, statsToday } from '../lib/stats';
+import {
+  inSeason,
+  medalFor,
+  nextSeason,
+  playerUrl,
+  podium,
+  rankByWins,
+  seasonOf,
+  seasonsFor,
+  seasonWinsByPlayer,
+  seasonWinsLabel,
+  winsLabel,
+} from '../lib/win-stats';
 
-const players = await getWinStats();
+const ALL = 'alla';
+
+const today = statsToday();
+const scores = await getQuizScores();
+const seasons = seasonsFor(scores, today);
+const current = seasonOf(today);
+const upcoming = nextSeason(current);
+const requested = Astro.url.searchParams.get('sasong');
+const selected =
+  requested === ALL ? null : (seasons.find((s) => s.id === requested) ?? current);
+
+const players = rankByWins(selected ? inSeason(scores, selected.id) : scores);
+const seasonWins = selected ? null : seasonWinsByPlayer(scores, today);
 const top = podium(players);
 const rest = players.slice(top.length);
+
+const seasonUrl = (id: string) => (id === current.id ? '/stats' : `/stats?sasong=${id}`);
 ---
 
 <Layout>
@@ -17,14 +43,52 @@ const rest = players.slice(top.length);
       <p class="subtitle">
         Flest rätta gissningar i ett avslutat quiz ger en vinst. Vid lika många
         vinster avgör det totala antalet rätta gissningar. Quiz där färre än tre
-        personer gissade räknas inte.
+        personer gissade räknas inte. Varje halvår är en säsong (januari–juli och augusti–december), och den som
+        leder när säsongen är slut får en säsongsvinst.
       </p>
     </header>
+
+    <nav class="season-nav" aria-label="Välj säsong">
+      <ul>
+        {seasons.map((season) => (
+          <>
+            <li>
+              <a
+                href={seasonUrl(season.id)}
+                aria-current={selected?.id === season.id ? 'page' : undefined}
+              >
+                {season.name}
+                {season.id === current.id && <span class="season-nav-note"> (pågår)</span>}
+              </a>
+            </li>
+            {season.id === current.id && (
+              <li>
+                <span class="season-nav-upcoming">
+                  {upcoming.name}
+                  <span class="season-nav-note"> (startar i {upcoming.starts})</span>
+                </span>
+              </li>
+            )}
+          </>
+        ))}
+        <li>
+          <a href={`/stats?sasong=${ALL}`} aria-current={selected ? undefined : 'page'}>
+            Alla säsonger
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <h2 class="season-title">{selected ? selected.name : 'Alla säsonger'}</h2>
 
     {
       players.length === 0 ? (
         <div class="empty-state">
-          <p>Ingen statistik ännu. Den dyker upp när det första quizet är avslutat.</p>
+          <p>
+            {selected
+              ? 'Inga avslutade quiz den här säsongen ännu.'
+              : 'Ingen statistik ännu. Den dyker upp när det första quizet är avslutat.'}
+          </p>
         </div>
       ) : (
         <>
@@ -40,6 +104,11 @@ const rest = players.slice(top.length);
                   </a>
                   <span class="stats-podium-wins">{winsLabel(player.wins)}</span>
                   <span class="player-stats">{player.correctGuesses} rätta gissningar</span>
+                  {seasonWins && (
+                    <span class="player-stats">
+                      {seasonWinsLabel(seasonWins.get(player.userId) ?? 0)}
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>
@@ -47,7 +116,7 @@ const rest = players.slice(top.length);
 
           {rest.length > 0 && (
             <section class="section stats-table-section">
-              <h2>Alla deltagare</h2>
+              <h3>Alla deltagare</h3>
               <table class="stats-table">
                 <thead>
                   <tr>
@@ -55,6 +124,7 @@ const rest = players.slice(top.length);
                     <th scope="col">Namn</th>
                     <th scope="col">Vinster</th>
                     <th scope="col">Rätta gissningar</th>
+                    {seasonWins && <th scope="col">Säsongs&shy;vinster</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -66,6 +136,7 @@ const rest = players.slice(top.length);
                       </th>
                       <td>{player.wins}</td>
                       <td>{player.correctGuesses}</td>
+                      {seasonWins && <td>{seasonWins.get(player.userId) ?? 0}</td>}
                     </tr>
                   ))}
                 </tbody>

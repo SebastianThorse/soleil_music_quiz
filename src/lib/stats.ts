@@ -32,3 +32,7 @@ export async function getQuizScores() {
 export async function getWinStats() {
   return rankByWins(await getQuizScores());
 }
+
+// Lets the local demo pretend it's a later date, to review seasons that have ended.
+export const statsToday = () =>
+  import.meta.env.DEV && process.env.DEMO_TODAY ? new Date(process.env.DEMO_TODAY) : new Date();

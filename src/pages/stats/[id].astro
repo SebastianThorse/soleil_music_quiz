@@ -4,8 +4,8 @@ import Layout from '../../layouts/Layout.astro';
 import { displayText } from '../../lib/display-text';
 import { db } from '../../lib/db';
 import { user } from '../../lib/db/schema';
-import { getQuizScores } from '../../lib/stats';
-import { rankByWins, winsFor, winsLabel } from '../../lib/win-stats';
+import { getQuizScores, statsToday } from '../../lib/stats';
+import { rankByWins, seasonWinsByPlayer, winsFor, winsLabel } from '../../lib/win-stats';
 
 const { id } = Astro.params;
 
@@ -20,6 +20,7 @@ if (!player) {
 }
 
 const wins = winsFor(id!, scores);
+const seasonWins = seasonWinsByPlayer(scores, statsToday()).get(id!) ?? 0;
 const names = new Intl.ListFormat('sv', { type: 'conjunction' });
 const formatDate = (date: Date | null) =>
   date?.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' }) ?? '';
@@ -42,6 +43,10 @@ const formatDate = (date: Date | null) =>
       <div class="stat-item">
         <span class="stat-text">Vinster</span>
         <span class="stat-number">{player?.wins ?? 0}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-text">Säsongsvinster</span>
+        <span class="stat-number">{seasonWins}</span>
       </div>
       <div class="stat-item">
         <span class="stat-text">Rätta gissningar</span>

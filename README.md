@@ -31,6 +31,13 @@ Sign in at `http://localhost:4321/login` with `demo0@example.com` and
 creates only `.astro/ui-demo.db` and refuses to overwrite an existing file.
 It does not connect to Turso or use the normal `.astro/content.db` database.
 
+To review the season leaderboards on `/stats`, run `npm run demo:seasons` after
+`npm run demo:seed`. It adds completed quizzes from 2025 to 2027 to the demo database
+and can be run again. A season is January–July or August–December (Swedish time),
+taken from when a quiz was closed. Everything up to the end of 2026 is one first season.
+To see 2027 as ended seasons with season wins, start the dev server with
+`DEMO_TODAY=2028-02-01` as well. It only works in `npm run dev`.
+
 The home page includes open, guessing and completed quizzes. The demo covers
 Swedish text and emoji, an existing broken quiz name, a long title, missing song
 metadata, a Spotify search link, all guess cards on one screen, an unguessed submitter
