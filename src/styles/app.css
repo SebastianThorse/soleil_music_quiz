@@ -726,9 +726,46 @@ iframe {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.stats-table-section > h2 {
+.stats-table-section > h3 {
   margin-top: 0;
   font-size: 1.4rem;
+}
+.season-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+.season-nav a,
+.season-nav-upcoming {
+  display: inline-block;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.season-nav a:hover {
+  border-color: var(--muted);
+}
+.season-nav a[aria-current='page'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+.season-nav-upcoming {
+  border-style: dashed;
+  color: var(--muted);
+}
+.season-nav-note {
+  font-weight: 500;
+}
+.season-title {
+  margin: 0 0 1.25rem;
 }
 .stats-table {
   width: 100%;
@@ -846,7 +883,7 @@ iframe {
     text-align: left;
   }
   .stats-podium-medal {
-    grid-row: span 3;
+    grid-row: span 4;
     font-size: 2rem;
   }
   .stats-table th,

@@ -107,3 +107,75 @@ export const medalFor = (rank: number) => ['🥇', '🥈', '🥉'][rank - 1] ?? 
 export const winsLabel = (wins: number) => `${wins} ${wins === 1 ? 'vinst' : 'vinster'}`;
 
 export const playerUrl = (userId: string) => `/stats/${encodeURIComponent(userId)}`;
+
+// A season is a half year: 1 = January–July (July is usually the last quiz before the summer
+// break), 2 = August–December.
+export interface Season {
+  id: string;
+  name: string;
+}
+
+// Quizzes before seasons were introduced stay together in one season that ends with 2026.
+const FIRST_SEASON_YEAR = 2026;
+const FIRST_SEASON: Season = { id: `${FIRST_SEASON_YEAR}-2`, name: 'Första säsongen' };
+
+const stockholmMonthYear = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Europe/Stockholm',
+  year: 'numeric',
+  month: 'numeric',
+});
+
+export function seasonOf(date: Date): Season {
+  const parts = stockholmMonthYear.formatToParts(date);
+  const year = Number(parts.find((p) => p.type === 'year')!.value);
+  const month = Number(parts.find((p) => p.type === 'month')!.value);
+  if (year <= FIRST_SEASON_YEAR) return FIRST_SEASON;
+  return halfYear(year, month <= 7 ? 1 : 2);
+}
+
+const halfYear = (year: number, half: number): Season => ({
+  id: `${year}-${half}`,
+  name: `${half === 1 ? 'Våren' : 'Hösten'} ${year}`,
+});
+
+export function nextSeason(season: Season): Season & { starts: string } {
+  const [year, half] = season.id.split('-').map(Number);
+  return half === 1
+    ? { ...halfYear(year, 2), starts: `augusti ${year}` }
+    : { ...halfYear(year + 1, 1), starts: `januari ${year + 1}` };
+}
+
+// The current season first, then the ended ones, newest first.
+export function seasonsFor(scores: { closedAt: Date | null }[], now = new Date()): Season[] {
+  const current = seasonOf(now);
+  const seasons = new Map<string, Season>([[current.id, current]]);
+  for (const { closedAt } of scores) {
+    if (!closedAt) continue;
+    const season = seasonOf(closedAt);
+    // Ids are "YYYY-H", so string order is chronological.
+    if (season.id < current.id) seasons.set(season.id, season);
+  }
+  return [...seasons.values()].sort((a, b) => b.id.localeCompare(a.id));
+}
+
+export const inSeason = <T extends { closedAt: Date | null }>(scores: T[], seasonId: string) =>
+  scores.filter((s) => s.closedAt && seasonOf(s.closedAt).id === seasonId);
+
+// Only seasons that have ended have a winner: everyone sharing first place with at least one win.
+export function seasonWinsByPlayer(
+  scores: (QuizScore & { closedAt: Date | null })[],
+  now = new Date(),
+): Map<string, number> {
+  const current = seasonOf(now).id;
+  const wins = new Map<string, number>();
+  for (const season of seasonsFor(scores, now)) {
+    if (season.id >= current) continue;
+    for (const player of podium(rankByWins(inSeason(scores, season.id)))) {
+      if (player.rank === 1) wins.set(player.userId, (wins.get(player.userId) ?? 0) + 1);
+    }
+  }
+  return wins;
+}
+
+export const seasonWinsLabel = (wins: number) =>
+  `${wins} ${wins === 1 ? 'säsongsvinst' : 'säsongsvinster'}`;

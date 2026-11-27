@@ -10,7 +10,8 @@
     "preview": "astro preview",
     "astro": "astro",
     "db:push": "drizzle-kit push --config=src/drizzle.congif.ts",
-    "db:studio": "drizzle-kit studio --config=src/drizzle.congif.ts"
+    "db:studio": "drizzle-kit studio --config=src/drizzle.congif.ts",
+    "demo:seasons": "node scripts/seed-seasons-demo.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^4.4.2",
