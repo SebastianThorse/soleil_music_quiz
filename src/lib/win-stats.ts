@@ -4,6 +4,7 @@ export interface QuizScore {
   userId: string;
   userName: string;
   correctGuesses: number;
+  totalGuesses: number;
 }
 
 export interface PlayerStats {
@@ -11,6 +12,7 @@ export interface PlayerStats {
   userName: string;
   wins: number;
   correctGuesses: number;
+  totalGuesses: number;
   quizzes: number;
   rank: number;
   shared: boolean;
@@ -52,9 +54,11 @@ export function rankByWins(allScores: QuizScore[]): PlayerStats[] {
       userName: s.userName,
       wins: 0,
       correctGuesses: 0,
+      totalGuesses: 0,
       quizzes: 0,
     };
     player.correctGuesses += s.correctGuesses;
+    player.totalGuesses += s.totalGuesses;
     player.quizzes += 1;
     if (isWin(s)) player.wins += 1;
     players.set(s.userId, player);
@@ -103,6 +107,12 @@ export const podium = (players: PlayerStats[]) =>
   players.filter((p) => p.rank <= 3 && p.wins > 0);
 
 export const medalFor = (rank: number) => ['🥇', '🥈', '🥉'][rank - 1] ?? `#${rank}`;
+
+export const wrongGuesses = (p: { correctGuesses: number; totalGuesses: number }) =>
+  p.totalGuesses - p.correctGuesses;
+
+export const correctPercent = (p: { correctGuesses: number; totalGuesses: number }) =>
+  p.totalGuesses === 0 ? '–' : `${Math.round((100 * p.correctGuesses) / p.totalGuesses)}\u00a0%`;
 
 export const winsLabel = (wins: number) => `${wins} ${wins === 1 ? 'vinst' : 'vinster'}`;
 

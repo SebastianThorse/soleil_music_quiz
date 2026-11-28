@@ -8,6 +8,7 @@ const score = (quizId: number, userId: string, correctGuesses: number, closedAt:
   userId,
   userName: userId.toUpperCase(),
   correctGuesses,
+  totalGuesses: 8,
   closedAt: at(closedAt),
 });
 

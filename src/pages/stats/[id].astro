@@ -5,7 +5,14 @@ import { displayText } from '../../lib/display-text';
 import { db } from '../../lib/db';
 import { user } from '../../lib/db/schema';
 import { getQuizScores, statsToday } from '../../lib/stats';
-import { rankByWins, seasonWinsByPlayer, winsFor, winsLabel } from '../../lib/win-stats';
+import {
+  correctPercent,
+  rankByWins,
+  seasonWinsByPlayer,
+  winsFor,
+  winsLabel,
+  wrongGuesses,
+} from '../../lib/win-stats';
 
 const { id } = Astro.params;
 
@@ -49,12 +56,20 @@ const formatDate = (date: Date | null) =>
         <span class="stat-number">{seasonWins}</span>
       </div>
       <div class="stat-item">
+        <span class="stat-text">Quiz</span>
+        <span class="stat-number">{player?.quizzes ?? 0}</span>
+      </div>
+      <div class="stat-item">
         <span class="stat-text">Rätta gissningar</span>
         <span class="stat-number">{player?.correctGuesses ?? 0}</span>
       </div>
       <div class="stat-item">
-        <span class="stat-text">Quiz</span>
-        <span class="stat-number">{player?.quizzes ?? 0}</span>
+        <span class="stat-text">Fel gissningar</span>
+        <span class="stat-number">{player ? wrongGuesses(player) : 0}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-text">Andel rätt</span>
+        <span class="stat-number">{player ? correctPercent(player) : '–'}</span>
       </div>
     </div>
 

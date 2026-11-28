@@ -1,12 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { podium, rankByWins, winsFor, type QuizScore } from '../src/lib/win-stats.ts';
+import {
+  correctPercent,
+  podium,
+  rankByWins,
+  winsFor,
+  wrongGuesses,
+  type QuizScore,
+} from '../src/lib/win-stats.ts';
 
 const score = (
   quizId: number,
   userId: string,
   correctGuesses: number,
-): QuizScore => ({ quizId, userId, userName: userId.toUpperCase(), correctGuesses });
+): QuizScore => ({
+  quizId,
+  userId,
+  userName: userId.toUpperCase(),
+  correctGuesses,
+  totalGuesses: 8,
+});
 
 const summary = (rows: QuizScore[]) =>
   rankByWins(rows).map(({ userId, rank, wins, correctGuesses, shared }) => ({
@@ -178,4 +191,19 @@ test('a player’s wins skip small quizzes and quizzes nobody scored in', () => 
   ];
   assert.deepEqual(winsFor('anna', scores), []);
   assert.deepEqual(winsFor('nobody', scores), []);
+});
+
+test('sums all guesses and works out wrong guesses and the share correct', () => {
+  const [anna] = rankByWins([
+    { quizId: 1, userId: 'anna', userName: 'ANNA', correctGuesses: 3, totalGuesses: 8 },
+    { quizId: 1, userId: 'erik', userName: 'ERIK', correctGuesses: 1, totalGuesses: 8 },
+    { quizId: 1, userId: 'zed', userName: 'ZED', correctGuesses: 0, totalGuesses: 8 },
+    { quizId: 2, userId: 'anna', userName: 'ANNA', correctGuesses: 2, totalGuesses: 4 },
+    { quizId: 2, userId: 'erik', userName: 'ERIK', correctGuesses: 1, totalGuesses: 4 },
+    { quizId: 2, userId: 'zed', userName: 'ZED', correctGuesses: 0, totalGuesses: 4 },
+  ]);
+  assert.equal(anna.totalGuesses, 12);
+  assert.equal(wrongGuesses(anna), 7);
+  assert.equal(correctPercent(anna), '42 %');
+  assert.equal(correctPercent({ correctGuesses: 0, totalGuesses: 0 }), '–');
 });
