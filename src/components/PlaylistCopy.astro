@@ -1,0 +1,85 @@
+---
+import { displayText } from '../lib/display-text';
+import { playlistLinks, quizOrder } from '../lib/quiz-display';
+
+interface Props {
+  quizId: number;
+  status: string;
+  songs: { id: number; songLink: string; songTitle: string | null }[];
+  // Inside another card, without a card of its own.
+  inline?: boolean;
+}
+const { quizId, status, songs, inline = false } = Astro.props;
+const Heading = inline ? 'h4' : 'h3';
+
+// Same order as the guessing page and the presentation.
+const playlist = playlistLinks(quizOrder(songs, quizId));
+const skippedNames = playlist.skipped
+  .map((s) => displayText(s.songTitle) || s.songLink)
+  .join(', ');
+---
+
+<div class={inline ? 'playlist-inline' : 'section'}>
+  <Heading>Spellista i Spotify</Heading>
+  {
+    playlist.links.length === 0 ? (
+      <p class="hidden-text">Inga låtar med Spotify-länk ännu.</p>
+    ) : (
+      <>
+        {status === 'open' && (
+          <p class="hidden-text">
+            Låtar kan fortfarande lämnas in. Kopiera när alla har lämnat in sin låt.
+          </p>
+        )}
+        <ol class="playlist-steps">
+          <li>Kopiera låtlänkarna med knappen nedan.</li>
+          <li>Skapa en ny, tom spellista i Spotify-appen på datorn.</li>
+          <li>Klicka i spellistan och klistra in med ⌘V (Mac) eller Ctrl+V (Windows).</li>
+        </ol>
+        <p class="hidden-text">
+          Låtarna kommer i samma ordning som när man gissar, och spellistan visar inte vem som valde vilken låt.
+        </p>
+        <div class="playlist-copy">
+          <button type="button" class="btn-primary" data-playlist-copy>
+            {playlist.links.length === 1
+              ? 'Kopiera 1 låtlänk'
+              : `Kopiera ${playlist.links.length} låtlänkar`}
+          </button>
+          <span class="playlist-status" role="status" aria-live="polite" />
+        </div>
+        <textarea
+          class="playlist-links"
+          readonly
+          hidden
+          rows={Math.min(playlist.links.length, 10)}
+          aria-label="Låtlänkar"
+        >{playlist.links.join('\n')}</textarea>
+        {playlist.skipped.length > 0 && (
+          <p class="hidden-text">
+            {playlist.skipped.length === 1
+              ? `En låt kommer inte med eftersom den inte har en länk till en låt i Spotify: ${skippedNames}.`
+              : `${playlist.skipped.length} låtar kommer inte med eftersom de inte har en länk till en låt i Spotify: ${skippedNames}.`}
+          </p>
+        )}
+      </>
+    )
+  }
+</div>
+
+<script>
+  const button = document.querySelector<HTMLButtonElement>('[data-playlist-copy]');
+  const links = document.querySelector<HTMLTextAreaElement>('.playlist-links');
+  const status = document.querySelector<HTMLElement>('.playlist-status');
+  button?.addEventListener('click', async () => {
+    if (!links || !status) return;
+    try {
+      await navigator.clipboard.writeText(links.value);
+      status.textContent = 'Kopierat! Klistra in i en tom spellista i Spotify.';
+    } catch {
+      links.hidden = false;
+      links.select();
+      status.textContent =
+        'Det gick inte att kopiera automatiskt. Markera texten nedan och kopiera den.';
+    }
+  });
+</script>
