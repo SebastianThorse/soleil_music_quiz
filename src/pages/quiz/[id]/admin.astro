@@ -7,8 +7,10 @@ import {
   quizzes,
   quizAdmins,
   quizParticipants,
+  songSubmissions,
   user as userTable,
 } from '../../../lib/db/schema';
+import PlaylistCopy from '../../../components/PlaylistCopy.astro';
 import { eq, and } from 'drizzle-orm';
 
 const { user } = Astro.locals;
@@ -75,6 +77,15 @@ const adminUserIds = new Set(adminsList.map((a) => a.userId));
 const nonAdminParticipants = participants.filter(
   (p) => !adminUserIds.has(p.id),
 );
+
+const songs = await db
+  .select({
+    id: songSubmissions.id,
+    songLink: songSubmissions.songLink,
+    songTitle: songSubmissions.songTitle,
+  })
+  .from(songSubmissions)
+  .where(eq(songSubmissions.quizId, quiz.id));
 
 let error = '';
 let success = '';
@@ -201,6 +212,8 @@ if (Astro.request.method === 'POST') {
     {error && <div class="error-message" role="alert">{error}</div>}
 
     {success && <div class="success-message" role="status">{success}</div>}
+
+    <PlaylistCopy quizId={quiz.id} status={quiz.status} songs={songs} />
 
     <!-- Edit Quiz Details -->
     <div class="section">

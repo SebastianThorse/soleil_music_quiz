@@ -96,3 +96,15 @@ export function presentationPages(
   }
   return pages;
 }
+
+// One track link per line: pasting that into a playlist in the Spotify desktop app adds the tracks.
+export function playlistLinks<T extends { songLink: string }>(songs: T[]) {
+  const links: string[] = [];
+  const skipped: T[] = [];
+  for (const song of songs) {
+    const id = getSpotifyTrackId(song.songLink);
+    if (id) links.push(`https://open.spotify.com/track/${id}`);
+    else skipped.push(song);
+  }
+  return { links, skipped };
+}

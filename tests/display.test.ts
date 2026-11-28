@@ -4,6 +4,7 @@ import { displayText } from '../src/lib/display-text.ts';
 import {
   buildLeaderboardGroups,
   getSpotifyTrackId,
+  playlistLinks,
   presentationEntries,
   presentationPages,
   quizOrder,
@@ -145,4 +146,18 @@ test('quiz song order is stable per quiz and unrelated to submission order', () 
   assert.ok(quizzes.every((q) => !isRotation(ids(quizOrder(songs, q)))));
   assert.notDeepEqual(ids(quizOrder(songs, 1)), ids(quizOrder(songs, 2)));
   assert.deepEqual(quizOrder([], 1), []);
+});
+
+test('turns track links into clean playlist links and skips links without a track', () => {
+  const { links, skipped } = playlistLinks([
+    { songLink: 'https://open.spotify.com/intl-sv/track/4g5JMsxxzvN3Yj2e6cECKw?si=abc' },
+    { songLink: 'spotify:track:0VjIjW4GlUZAMYd2vXMi3b' },
+    { songLink: 'https://open.spotify.com/search/soleil' },
+    { songLink: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
+  ]);
+  assert.deepEqual(links, [
+    'https://open.spotify.com/track/4g5JMsxxzvN3Yj2e6cECKw',
+    'https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b',
+  ]);
+  assert.equal(skipped.length, 2);
 });

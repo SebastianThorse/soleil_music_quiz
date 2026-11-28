@@ -618,6 +618,32 @@ iframe {
 .actions {
   margin-bottom: 2rem;
 }
+.playlist-inline {
+  margin: 1.5rem 0;
+}
+.playlist-inline > h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+.playlist-steps {
+  margin: 1rem 0;
+  padding-left: 1.25rem;
+}
+.playlist-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.playlist-status {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.playlist-links {
+  width: 100%;
+  margin-top: 1rem;
+  font: 0.85rem/1.5 ui-monospace, monospace;
+}
 .admin-item {
   display: flex;
   justify-content: space-between;

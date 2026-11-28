@@ -2,6 +2,7 @@
 // src/pages/quiz/[id].astro
 import Layout from '../../layouts/Layout.astro';
 import QuizStages from '../../components/QuizStages.astro';
+import PlaylistCopy from '../../components/PlaylistCopy.astro';
 import { displayText } from '../../lib/display-text';
 import { db } from '../../lib/db';
 import {
@@ -444,6 +445,7 @@ const getStatusColor = (status: string) => {
                 {votedCount.count} av {participantCount.count} deltagare har
                 gissat hittills.
               </p>
+              <PlaylistCopy quizId={quiz.id} status={quiz.status} songs={submissions} inline />
               <form method="POST" accept-charset="UTF-8" class="admin-action-row">
                 <input type="hidden" name="action" value="change_status" />
                 <button
