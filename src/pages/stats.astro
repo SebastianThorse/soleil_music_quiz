@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import { displayText } from '../lib/display-text';
 import { getQuizScores, statsToday } from '../lib/stats';
 import {
+  correctPercent,
   inSeason,
   medalFor,
   nextSeason,
@@ -14,6 +15,7 @@ import {
   seasonWinsByPlayer,
   seasonWinsLabel,
   winsLabel,
+  wrongGuesses,
 } from '../lib/win-stats';
 
 const ALL = 'alla';
@@ -28,7 +30,7 @@ const selected =
   requested === ALL ? null : (seasons.find((s) => s.id === requested) ?? current);
 
 const players = rankByWins(selected ? inSeason(scores, selected.id) : scores);
-const seasonWins = selected ? null : seasonWinsByPlayer(scores, today);
+const seasonWins = seasonWinsByPlayer(scores, today);
 const top = podium(players);
 const rest = players.slice(top.length);
 
@@ -103,12 +105,13 @@ const seasonUrl = (id: string) => (id === current.id ? '/stats' : `/stats?sasong
                     {displayText(player.userName)}
                   </a>
                   <span class="stats-podium-wins">{winsLabel(player.wins)}</span>
-                  <span class="player-stats">{player.correctGuesses} rätta gissningar</span>
-                  {seasonWins && (
-                    <span class="player-stats">
-                      {seasonWinsLabel(seasonWins.get(player.userId) ?? 0)}
-                    </span>
-                  )}
+                  <span class="player-stats">
+                    {player.correctGuesses} rätt · {wrongGuesses(player)} fel ·{' '}
+                    {correctPercent(player)} rätt
+                  </span>
+                  <span class="player-stats">
+                    {player.quizzes} quiz · {seasonWinsLabel(seasonWins.get(player.userId) ?? 0)}
+                  </span>
                 </li>
               ))}
             </ol>
@@ -117,30 +120,38 @@ const seasonUrl = (id: string) => (id === current.id ? '/stats' : `/stats?sasong
           {rest.length > 0 && (
             <section class="section stats-table-section">
               <h3>Alla deltagare</h3>
-              <table class="stats-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Plats</th>
-                    <th scope="col">Namn</th>
-                    <th scope="col">Vinster</th>
-                    <th scope="col">Rätta gissningar</th>
-                    {seasonWins && <th scope="col">Säsongs&shy;vinster</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rest.map((player) => (
+              <div class="stats-table-scroll">
+                <table class="stats-table">
+                  <thead>
                     <tr>
-                      <td class="stats-rank">{player.rank}</td>
-                      <th scope="row" class="player-name">
-                        <a href={playerUrl(player.userId)}>{displayText(player.userName)}</a>
-                      </th>
-                      <td>{player.wins}</td>
-                      <td>{player.correctGuesses}</td>
-                      {seasonWins && <td>{seasonWins.get(player.userId) ?? 0}</td>}
+                      <th scope="col">Plats</th>
+                      <th scope="col">Namn</th>
+                      <th scope="col">Vinster</th>
+                      <th scope="col">Säsongsvinster</th>
+                      <th scope="col" class="stats-group-start">Quiz</th>
+                      <th scope="col">Rätt</th>
+                      <th scope="col">Fel</th>
+                      <th scope="col">% rätt</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {rest.map((player) => (
+                      <tr>
+                        <td class="stats-rank">{player.rank}</td>
+                        <th scope="row" class="player-name">
+                          <a href={playerUrl(player.userId)}>{displayText(player.userName)}</a>
+                        </th>
+                        <td class="stats-wins">{player.wins}</td>
+                        <td>{seasonWins.get(player.userId) ?? 0}</td>
+                        <td class="stats-group-start">{player.quizzes}</td>
+                        <td>{player.correctGuesses}</td>
+                        <td>{wrongGuesses(player)}</td>
+                        <td>{correctPercent(player)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
         </>
